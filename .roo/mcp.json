@@ -1,0 +1,10 @@
+{
+	"mcpServers": {
+		"duckduckgo-search": {
+			"command": "C:\\Users\\wooho\\AppData\\Roaming\\Python\\Python313\\Scripts\\duckduckgo-mcp-server.exe",
+			"args": [],
+			"disabled": false,
+			"alwaysAllow": []
+		}
+	}
+}
