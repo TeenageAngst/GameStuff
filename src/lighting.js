@@ -20,7 +20,7 @@ export function createLighting(k) {
     const W = k.width();
     const H = k.height();
 
-    // The game canvas (created by kaboom()). Fall back to the first canvas in
+    // The game canvas (created by kaplay()). Fall back to the first canvas in
     // the DOM if k.canvas() is not available in this build.
     const gameCanvas =
         (typeof k.canvas === "function" && k.canvas()) ||

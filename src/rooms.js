@@ -155,7 +155,7 @@ export function createRooms(k, player, lighting, ui) {
     }
 
     function placePlayer(roomId) {
-        // This kaboom build exposes pos as a plain {x, y} object (no .set()),
+        // This kaplay build exposes pos as a plain {x, y} object (no .set()),
         // so assign the components directly (matches how player.js clamps pos).
         const [x, y] = ROOMS[roomId].playerPos(W, H);
         player.pos.x = x;

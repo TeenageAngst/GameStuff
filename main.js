@@ -7,7 +7,7 @@ import { createLighting } from './src/lighting.js';
 import { createRooms, ROOM_IDS } from './src/rooms.js';
 import { TEXTS } from './src/texts.js';
 
-const k = kaboom({
+const k = kaplay({
     background: [0, 0, 0],
     width: 800,
     height: 600,

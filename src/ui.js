@@ -1,5 +1,5 @@
 export function createUI(k) {
-    // NOTE: This kaboom build (3000.0.1) has no `visible` property on game
+    // NOTE: This kaplay build (3001.0.19) has no `visible` property on game
     // objects, so we hide/show the message box and text via `opacity`
     // (0 = hidden, 1 = shown).
     const PADDING = 16;
