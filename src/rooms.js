@@ -67,8 +67,8 @@ const ROOMS = {
             return objects;
         },
         playerPos(W, H) {
-            // Enter near the bottom, well clear of the top door.
-            return [W / 2, H - 120];
+            // Enter just below the north door (door spans y=24..88).
+            return [W / 2, 140];
         },
     },
 };
