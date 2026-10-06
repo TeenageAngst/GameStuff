@@ -140,6 +140,14 @@ export function createRooms(k, player, lighting, ui) {
         const ctx = { W, H, player, lighting, ui, createDoor };
         const objects = room.build(k, ctx);
         roomObjects.push(...objects);
+        // Register interactable objects as shadow casters so they block light
+        // and cast shadows. The light source itself is skipped (it emits, not
+        // blocks).
+        for (const obj of objects) {
+            if (obj.has && obj.has("interactable") && obj.lightOn === undefined) {
+                lighting.registerShadowCaster(obj);
+            }
+        }
     }
 
     function destroyRoom() {
@@ -148,6 +156,10 @@ export function createRooms(k, player, lighting, ui) {
             // system never iterates over a destroyed object.
             if (obj.lightOn !== undefined) {
                 lighting.unregister(obj);
+            }
+            // Unregister shadow casters for the same reason.
+            if (obj.has && obj.has("interactable") && obj.lightOn === undefined) {
+                lighting.unregisterShadowCaster(obj);
             }
             obj.destroy();
         }

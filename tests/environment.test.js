@@ -84,11 +84,16 @@ module.exports = {
 
     // Compute a point near the light (within its radius, outside its core)
     // and a point far from it, relative to the light's actual center.
+    //
+    // The "near" point is sampled to the LEFT of the light center (not
+    // directly below) because the player is a shadow caster sitting at the
+    // light's position, and its shadow cone extends away from the light.
+    // Sampling to the side avoids the shadow cone.
     const { nearX, nearY } = await page.evaluate(() => {
       const l = window.testLight;
       const cx = l.pos.x + (l.width || 32) / 2;
       const cy = l.pos.y + (l.height || 32) / 2;
-      return { nearX: cx, nearY: cy + 100 }; // 100px below the light center
+      return { nearX: cx - 100, nearY: cy }; // 100px left of the light center
     });
     const farX = 10;
     const farY = 10;

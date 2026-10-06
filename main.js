@@ -33,6 +33,9 @@ k.onLoad(() => {
     const lighting = createLighting(k);
     window.lighting = lighting;
 
+    // The player casts a shadow from any active light.
+    lighting.registerShadowCaster(player);
+
     // Expose factories for testing (tests create objects at runtime).
     // Naming convention: <room>.<type>.<name>
     window.createNarrative = (id, pos, ui) => createNarrative(k, id, pos, ui);
