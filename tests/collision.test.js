@@ -23,7 +23,7 @@ const { exec } = require('child_process');
       // but we can just check if player can move to a known object position.
       return {
         playerPos: { x: window.player.pos.x, y: window.player.pos.y },
-        // Based on main.js: createNarrativeObject(k, [200, 200], ...)
+        // Based on src/rooms.js: createNarrative(k, "main.narrative.air", [200, 200], ...)
         objectPos: { x: 200, y: 200 }
       };
     });

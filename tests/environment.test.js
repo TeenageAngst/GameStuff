@@ -42,11 +42,18 @@ const TOL = 16; // tolerance band for "full darkness"
     // Setup: create a light object at the player's position so the player is
     // colliding with it (required for the E-key interaction to target it).
     await page.evaluate(() => {
-      if (typeof window.createEnvironmentObject !== 'function') {
-        throw new Error('createEnvironmentObject is not defined on window');
+      if (typeof window.createLight !== 'function') {
+        throw new Error('createLight is not defined on window');
       }
-      window.testLight = window.createEnvironmentObject(window.player.pos);
+      window.testLight = window.createLight("main.environment.light", window.player.pos);
     });
+
+    // Wait for the physics engine to register the collision between the
+    // player and the newly created light (isColliding() needs a frame).
+    await page.waitForFunction(
+      () => window.player.isColliding(window.testLight),
+      { timeout: 5000 }
+    );
 
     // 1. The light starts OFF.
     const initialOn = await page.evaluate(() => window.testLight.lightOn);

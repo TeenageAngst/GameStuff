@@ -16,11 +16,11 @@ const { exec } = require('child_process');
     await page.waitForFunction(() => window.player !== undefined, { timeout: 5000 });
 
     const result = await page.evaluate(() => {
-      if (typeof createStatObject !== 'function') {
-        throw new Error('createStatObject is not defined');
+      if (typeof window.createStat !== 'function') {
+        throw new Error('createStat is not defined');
       }
-      
-      const statObj = createStatObject([window.player.pos.x, window.player.pos.y], window.player);
+
+      const statObj = window.createStat("main.stat.speed", [window.player.pos.x, window.player.pos.y], window.player);
       
       const initialSpeed = window.player.speed;
       

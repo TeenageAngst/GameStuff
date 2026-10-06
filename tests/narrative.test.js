@@ -27,20 +27,25 @@ const { exec } = require('child_process');
       }
     });
 
-    // Create a narrative object at player position for easy interaction
+    // Create a narrative object at player position for easy interaction.
+    // The message is looked up from the TEXTS registry by the object ID
+    // (naming convention: <room>.<type>.<name>).
     await page.evaluate(() => {
       if (!window.player) throw new Error('Player not found on window object');
-      
-      // We need createNarrativeObject to be available or we define it here for the test
-      // But the goal is to test the actual implementation.
-      // So we'll assume main.js has already created one or we create one using the game's API
-      if (typeof createNarrativeObject === 'function') {
-        createNarrativeObject(window.player.pos, "The air feels heavy here...", window.ui);
+
+      if (typeof window.createNarrative === 'function') {
+        window.testNarrative = window.createNarrative("main.narrative.air", window.player.pos, window.ui);
       } else {
-        // Fallback for the first RED run where createNarrativeObject doesn't exist yet
-        throw new Error('createNarrativeObject is not defined');
+        throw new Error('createNarrative is not defined');
       }
     });
+
+    // Wait for the physics engine to register the collision between the
+    // player and the newly created object (isColliding() needs a frame).
+    await page.waitForFunction(
+      () => window.player.isColliding(window.testNarrative),
+      { timeout: 5000 }
+    );
 
     // Press 'e' to interact
     await page.keyboard.press('e');

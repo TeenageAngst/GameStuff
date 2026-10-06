@@ -16,9 +16,9 @@ const { exec } = require('child_process');
     // Setup interactable object in the browser context
     await page.evaluate(() => {
       if (!window.player) throw new Error('Player not found on window object');
-      
+
       // Create an interactable object at the player's position
-      add([
+      window.testInteractable = add([
         rect(32, 32),
         pos(window.player.pos),
         area(),
@@ -31,6 +31,13 @@ const { exec } = require('child_process');
       ]);
       window.interacted = false;
     });
+
+    // Wait for the physics engine to register the collision between the
+    // player and the newly created object (isColliding() needs a frame).
+    await page.waitForFunction(
+      () => window.player.isColliding(window.testInteractable),
+      { timeout: 5000 }
+    );
 
     // Press 'e' to interact
     await page.keyboard.press('e');

@@ -1,10 +1,11 @@
 import { createPlayer } from './src/player.js';
 import { setupInteraction } from './src/interaction.js';
 import { createUI } from './src/ui.js';
-import { createNarrativeObject, createEnvironmentObject, createStatObject } from './src/objects.js';
+import { createNarrative, createLight, createStat } from './src/objects.js';
 import { createBackground } from './src/background.js';
 import { createLighting } from './src/lighting.js';
-import { createRooms } from './src/rooms.js';
+import { createRooms, ROOM_IDS } from './src/rooms.js';
+import { TEXTS } from './src/texts.js';
 
 const k = kaboom({
     background: [0, 0, 0],
@@ -31,12 +32,14 @@ k.onLoad(() => {
     const lighting = createLighting(k);
     window.lighting = lighting;
 
-    window.createNarrativeObject = (pos, msg, ui) => createNarrativeObject(k, pos, msg, ui);
-    window.createEnvironmentObject = (pos) => createEnvironmentObject(k, pos, lighting);
-    window.createStatObject = (pos, player) => createStatObject(k, pos, player);
+    // Expose factories for testing (tests create objects at runtime).
+    // Naming convention: <room>.<type>.<name>
+    window.createNarrative = (id, pos, ui) => createNarrative(k, id, pos, ui);
+    window.createLight = (id, pos) => createLight(k, id, pos, lighting);
+    window.createStat = (id, pos, player) => createStat(k, id, pos, player);
 
-    // Room manager: builds the main room (3 interactables + a door) and
-    // handles door transitions to the empty room.
+    // Room manager: builds rooms from the data-driven registry and
+    // handles door transitions.
     const rooms = createRooms(k, player, lighting, ui);
     window.rooms = rooms;
 });

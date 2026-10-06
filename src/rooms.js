@@ -1,20 +1,77 @@
-import { createNarrativeObject, createEnvironmentObject, createStatObject } from './objects.js';
+import { createNarrative, createLight, createStat } from './objects.js';
+import { TEXTS } from './texts.js';
 
-// Room manager: two rooms connected by doors, with a fade transition.
+// Room manager: builds rooms from a data-driven registry, with fade transitions.
 //
-// Room "main": the original scene (3 interactable objects) plus a door at
-// the bottom center leading to the empty room. Dark (default lighting).
-// Room "empty": a well-lit, clearly defined empty room (bright floor +
-// darker walls) containing only a single door at the top center that leads
-// back to the main room.
+// Naming convention: <room>.<type>.<name>
+//   - Room IDs: ROOM_IDS.MAIN, ROOM_IDS.EMPTY
+//   - Object tags: "main.narrative.air", "main.door.south", etc.
+//   - Text keys: same as object tags, looked up in TEXTS (src/texts.js)
 //
-// Transition: fade to black, destroy the current room's objects, build the
-// target room, reposition the player, adjust the lighting darkness, then
-// fade back in. The player is frozen for the duration of the transition.
+// Adding a new room:
+//   1. Add an ID to ROOM_IDS
+//   2. Add an entry to ROOMS with { darkness, build, playerPos }
+//   3. Add any text keys to TEXTS in src/texts.js
 
 const FADE_TIME = 0.4; // seconds per half of the transition (out and in)
-const MAIN_DARKNESS = 0.65; // matches the lighting system's default
-const EMPTY_DARKNESS = 0; // fully lit
+
+export const ROOM_IDS = {
+    MAIN: "main",
+    EMPTY: "empty",
+};
+
+// Data-driven room registry. Each entry defines:
+//   darkness  – lighting darkness level (0 = fully lit, 1 = fully dark)
+//   build     – (k, ctx) => objects[]; creates the room's objects
+//   playerPos – (W, H) => [x, y]; where to place the player on entry
+const ROOMS = {
+    [ROOM_IDS.MAIN]: {
+        darkness: 0.65,
+        build(k, ctx) {
+            const { W, H, player, lighting, ui, createDoor } = ctx;
+            const objects = [];
+            objects.push(createNarrative(k, "main.narrative.air", [200, 200], ui));
+            objects.push(createLight(k, "main.environment.light", [400, 200], lighting));
+            objects.push(createStat(k, "main.stat.speed", [600, 200], player));
+            const door = createDoor("main.door.south", [W / 2 - 24, H - 88], ROOM_IDS.EMPTY);
+            objects.push(door, door.frame, door.handle);
+            return objects;
+        },
+        playerPos(W, H) {
+            // Enter just above the bottom door.
+            return [W / 2, H - 140];
+        },
+    },
+    [ROOM_IDS.EMPTY]: {
+        darkness: 0,
+        build(k, ctx) {
+            const { W, H, createDoor } = ctx;
+            const objects = [];
+            const WALL = 24;
+            // Floor: a large, bright, clearly defined surface.
+            objects.push(k.add([
+                k.rect(W - WALL * 2, H - WALL * 2),
+                k.pos(WALL, WALL),
+                k.color(235, 228, 210),
+                k.z(-50),
+            ]));
+            // Walls: a darker border framing the room.
+            const wallColor = [110, 100, 90];
+            objects.push(k.add([k.rect(W, WALL), k.pos(0, 0), k.color(wallColor), k.z(-40)]));
+            objects.push(k.add([k.rect(W, WALL), k.pos(0, H - WALL), k.color(wallColor), k.z(-40)]));
+            objects.push(k.add([k.rect(WALL, H), k.pos(0, 0), k.color(wallColor), k.z(-40)]));
+            objects.push(k.add([k.rect(WALL, H), k.pos(W - WALL, 0), k.color(wallColor), k.z(-40)]));
+            // The only thing in the room: a door back to the main room.
+            const door = createDoor("empty.door.north", [W / 2 - 24, WALL], ROOM_IDS.MAIN);
+            objects.push(door, door.frame, door.handle);
+            return objects;
+        },
+        playerPos(W, H) {
+            // Enter near the bottom, well clear of the top door.
+            return [W / 2, H - 120];
+        },
+    },
+};
 
 export function createRooms(k, player, lighting, ui) {
     const W = k.width();
@@ -36,9 +93,13 @@ export function createRooms(k, player, lighting, ui) {
         k.z(100),
     ]);
 
-    // Creates a door (interactable) plus its frame and handle. Interacting
-    // with it (E while colliding) starts the transition to targetRoom.
-    function createDoor(pos, target, arrivalMessage) {
+    // Creates a door (interactable) plus its frame and handle.
+    // `id` follows the convention: <room>.<type>.<name> e.g. "main.door.south"
+    // `target` is the ROOM_IDS value of the room this door leads to.
+    // The arrival message is looked up from TEXTS by `id`.
+    function createDoor(id, pos, target) {
+        const room = id.split('.')[0];
+        const arrivalMessage = TEXTS[id];
         const door = k.add([
             k.rect(48, 64),
             k.pos(pos),
@@ -46,6 +107,8 @@ export function createRooms(k, player, lighting, ui) {
             k.area(),
             k.body({ isStatic: true }),
             "interactable",
+            id,
+            `room:${room}`,
             {
                 isDoor: true,
                 interact: () => {
@@ -71,34 +134,12 @@ export function createRooms(k, player, lighting, ui) {
         return door;
     }
 
-    function buildMainRoom() {
+    function buildRoom(roomId) {
         roomObjects = [];
-        roomObjects.push(createNarrativeObject(k, [200, 200], "The air feels heavy here...", ui));
-        roomObjects.push(createEnvironmentObject(k, [400, 200], lighting));
-        roomObjects.push(createStatObject(k, [600, 200], player));
-        const door = createDoor([W / 2 - 24, H - 88], "empty", "A bright, empty room. A single door leads back.");
-        roomObjects.push(door, door.frame, door.handle);
-    }
-
-    function buildEmptyRoom() {
-        roomObjects = [];
-        const WALL = 24;
-        // Floor: a large, bright, clearly defined surface.
-        roomObjects.push(k.add([
-            k.rect(W - WALL * 2, H - WALL * 2),
-            k.pos(WALL, WALL),
-            k.color(235, 228, 210),
-            k.z(-50),
-        ]));
-        // Walls: a darker border framing the room.
-        const wallColor = [110, 100, 90];
-        roomObjects.push(k.add([k.rect(W, WALL), k.pos(0, 0), k.color(wallColor), k.z(-40)]));
-        roomObjects.push(k.add([k.rect(W, WALL), k.pos(0, H - WALL), k.color(wallColor), k.z(-40)]));
-        roomObjects.push(k.add([k.rect(WALL, H), k.pos(0, 0), k.color(wallColor), k.z(-40)]));
-        roomObjects.push(k.add([k.rect(WALL, H), k.pos(W - WALL, 0), k.color(wallColor), k.z(-40)]));
-        // The only thing in the room: a door back to the main room.
-        const door = createDoor([W / 2 - 24, WALL], "main", "Back where you started.");
-        roomObjects.push(door, door.frame, door.handle);
+        const room = ROOMS[roomId];
+        const ctx = { W, H, player, lighting, ui, createDoor };
+        const objects = room.build(k, ctx);
+        roomObjects.push(...objects);
     }
 
     function destroyRoom() {
@@ -113,18 +154,12 @@ export function createRooms(k, player, lighting, ui) {
         roomObjects = [];
     }
 
-    function placePlayer(room) {
+    function placePlayer(roomId) {
         // This kaboom build exposes pos as a plain {x, y} object (no .set()),
         // so assign the components directly (matches how player.js clamps pos).
-        if (room === "empty") {
-            // Enter near the bottom, well clear of the top door.
-            player.pos.x = W / 2;
-            player.pos.y = H - 120;
-        } else {
-            // Enter just above the bottom door.
-            player.pos.x = W / 2;
-            player.pos.y = H - 140;
-        }
+        const [x, y] = ROOMS[roomId].playerPos(W, H);
+        player.pos.x = x;
+        player.pos.y = y;
     }
 
     function transitionTo(target, arrivalMessage) {
@@ -145,13 +180,8 @@ export function createRooms(k, player, lighting, ui) {
             if (fade.opacity >= 1) {
                 // Fully hidden: swap the room.
                 destroyRoom();
-                if (targetRoom === "empty") {
-                    buildEmptyRoom();
-                    lighting.setDarkness(EMPTY_DARKNESS);
-                } else {
-                    buildMainRoom();
-                    lighting.setDarkness(MAIN_DARKNESS);
-                }
+                buildRoom(targetRoom);
+                lighting.setDarkness(ROOMS[targetRoom].darkness);
                 currentRoom = targetRoom;
                 placePlayer(targetRoom);
                 fadeTarget = 0;
@@ -171,9 +201,9 @@ export function createRooms(k, player, lighting, ui) {
     });
 
     // Start in the main room.
-    buildMainRoom();
-    currentRoom = "main";
-    lighting.setDarkness(MAIN_DARKNESS);
+    buildRoom(ROOM_IDS.MAIN);
+    currentRoom = ROOM_IDS.MAIN;
+    lighting.setDarkness(ROOMS[ROOM_IDS.MAIN].darkness);
 
     return {
         get currentRoom() {
