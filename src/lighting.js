@@ -54,6 +54,18 @@ export function createLighting(k) {
 
     const lights = new Set();
     let destroyed = false;
+
+    // Compute the rendered center of a light object. `pos` is the top-left
+    // corner (default anchor), and the sprite is scaled by `light.scale`, so
+    // the on-screen size is width*scale x height*scale. Falls back to 32 for
+    // objects without a sprite (e.g. the old rect placeholder).
+    function lightCenter(light) {
+        const sx = light.scale ? light.scale.x : 1;
+        const sy = light.scale ? light.scale.y : 1;
+        const w = (light.width || 32) * sx;
+        const h = (light.height || 32) * sy;
+        return { x: light.pos.x + w / 2, y: light.pos.y + h / 2 };
+    }
     // Current darkness level (0 = fully lit, 1 = fully dark). Defaults to the
     // DARKNESS constant; rooms can override it via setDarkness().
     let darkness = DARKNESS;
@@ -84,8 +96,7 @@ export function createLighting(k) {
         octx.globalCompositeOperation = "destination-out";
         for (const light of lights) {
             if (light.intensity <= 0) continue;
-            const x = light.pos.x + (light.width || 32) / 2;
-            const y = light.pos.y + (light.height || 32) / 2;
+            const { x, y } = lightCenter(light);
             const grad = octx.createRadialGradient(x, y, 0, x, y, LIGHT_RADIUS);
             grad.addColorStop(0, `rgba(0, 0, 0, ${light.intensity})`);
             grad.addColorStop(0.6, `rgba(0, 0, 0, ${light.intensity * 0.55})`);
@@ -101,8 +112,7 @@ export function createLighting(k) {
         octx.globalCompositeOperation = "lighter";
         for (const light of lights) {
             if (light.intensity <= 0) continue;
-            const x = light.pos.x + (light.width || 32) / 2;
-            const y = light.pos.y + (light.height || 32) / 2;
+            const { x, y } = lightCenter(light);
             const core = octx.createRadialGradient(x, y, 0, x, y, CORE_RADIUS);
             core.addColorStop(0, `rgba(255, 240, 200, ${0.9 * light.intensity})`);
             core.addColorStop(1, "rgba(255, 240, 200, 0)");

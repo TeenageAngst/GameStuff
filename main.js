@@ -19,6 +19,7 @@ window.k = k;
 // Load the player sprite, then start the game once the asset is ready so
 // k.sprite() has the image available.
 k.loadSprite("player.png", "assets/player.png");
+k.loadSprite("lamp.png", "assets/lamp.png");
 k.onLoad(() => {
     const ui = createUI(k);
     window.ui = ui;
