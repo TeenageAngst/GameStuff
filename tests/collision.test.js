@@ -1,14 +1,7 @@
-const { chromium } = require('playwright');
-const { exec } = require('child_process');
+const { fail, sleep } = require('./harness');
 
-(async () => {
-  const server = exec('npx serve .');
-  await new Promise(resolve => setTimeout(resolve, 2000));
-
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
-
-  try {
+module.exports = {
+  async run(page) {
     await page.goto('http://localhost:3000');
     await page.waitForSelector('canvas');
     await page.click('canvas');
@@ -32,7 +25,7 @@ const { exec } = require('child_process');
     });
 
     await page.keyboard.down('ArrowLeft');
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await sleep(1500);
     await page.keyboard.up('ArrowLeft');
 
     const posAfter = await page.evaluate(() => ({ x: window.player.pos.x, y: window.player.pos.y }));
@@ -40,8 +33,7 @@ const { exec } = require('child_process');
 
     const blockedX = OBJECT.x + OBJECT.size + PLAYER_HALF; // 248
     if (posAfter.x < blockedX - 10) {
-      console.error(`FAIL: Player passed through object. Expected x >= ${blockedX - 10}, got ${posAfter.x}`);
-      process.exit(1);
+      fail(`Player passed through object. Expected x >= ${blockedX - 10}, got ${posAfter.x}`);
     }
     console.log('PASS: Player blocked by object (head-on collision)');
 
@@ -55,12 +47,5 @@ const { exec } = require('child_process');
     console.log('PASS: Player snapped back from top boundary');
 
     console.log('ALL COLLISION AND BOUNDARY TESTS PASSED');
-    process.exit(0);
-  } catch (e) {
-    console.error('FAIL:', e.message);
-    process.exit(1);
-  } finally {
-    await browser.close();
-    server.kill();
-  }
-})();
+  },
+};

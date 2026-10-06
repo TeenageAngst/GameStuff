@@ -1,14 +1,7 @@
-const { chromium } = require('playwright');
-const { exec } = require('child_process');
+const { fail, sleep } = require('./harness');
 
-(async () => {
-  const server = exec('npx serve .');
-  await new Promise(resolve => setTimeout(resolve, 2000));
-
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
-  
-  try {
+module.exports = {
+  async run(page) {
     await page.goto('http://localhost:3000');
     await page.waitForSelector('canvas');
 
@@ -39,64 +32,58 @@ const { exec } = require('child_process');
     });
 
     if (!spriteInfo.isSprite || spriteInfo.isRect) {
-      console.error('FAIL: Player is not a sprite (still a rect/blue square)');
-      process.exit(1);
+      fail('Player is not a sprite (still a rect/blue square)');
     }
     console.log('PASS: Player is a sprite');
 
     if (spriteInfo.width !== 32 || spriteInfo.height !== 32) {
-      console.error(`FAIL: Player sprite is not 32x32. Got: ${spriteInfo.width}x${spriteInfo.height}`);
-      process.exit(1);
+      fail(`Player sprite is not 32x32. Got: ${spriteInfo.width}x${spriteInfo.height}`);
     }
     console.log('PASS: Player sprite is 32x32');
 
     // Move Right
     await page.keyboard.down('ArrowRight');
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await sleep(200);
     await page.keyboard.up('ArrowRight');
     const posAfterRight = await page.evaluate(() => window.player.pos.x);
-    
+
     if (posAfterRight > initialPos.x) {
       console.log('PASS: Player moved right');
     } else {
-      console.error(`FAIL: Player did not move right. Initial: ${initialPos.x}, After: ${posAfterRight}`);
-      process.exit(1);
+      fail(`Player did not move right. Initial: ${initialPos.x}, After: ${posAfterRight}`);
     }
 
     // Move Left
     await page.keyboard.down('ArrowLeft');
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await sleep(200);
     await page.keyboard.up('ArrowLeft');
     const posAfterLeft = await page.evaluate(() => window.player.pos.x);
     if (posAfterLeft < posAfterRight) {
       console.log('PASS: Player moved left');
     } else {
-      console.error(`FAIL: Player did not move left. Before: ${posAfterRight}, After: ${posAfterLeft}`);
-      process.exit(1);
+      fail(`Player did not move left. Before: ${posAfterRight}, After: ${posAfterLeft}`);
     }
 
     // Move Up
     await page.keyboard.down('ArrowUp');
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await sleep(200);
     await page.keyboard.up('ArrowUp');
     const posAfterUp = await page.evaluate(() => window.player.pos.y);
     if (posAfterUp < initialPos.y) {
       console.log('PASS: Player moved up');
     } else {
-      console.error(`FAIL: Player did not move up. Initial: ${initialPos.y}, After: ${posAfterUp}`);
-      process.exit(1);
+      fail(`Player did not move up. Initial: ${initialPos.y}, After: ${posAfterUp}`);
     }
 
     // Move Down
     await page.keyboard.down('ArrowDown');
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await sleep(200);
     await page.keyboard.up('ArrowDown');
     const posAfterDown = await page.evaluate(() => window.player.pos.y);
     if (posAfterDown > posAfterUp) {
       console.log('PASS: Player moved down');
     } else {
-      console.error(`FAIL: Player did not move down. Before: ${posAfterUp}, After: ${posAfterDown}`);
-      process.exit(1);
+      fail(`Player did not move down. Before: ${posAfterUp}, After: ${posAfterDown}`);
     }
 
     // Boundary Test: Right (Teleport and check snap)
@@ -128,12 +115,5 @@ const { exec } = require('child_process');
     console.log('PASS: Player snapped back from top boundary');
 
     console.log('ALL PLAYER MOVEMENT AND BOUNDARY TESTS PASSED');
-    process.exit(0);
-  } catch (e) {
-    console.error('FAIL:', e.message);
-    process.exit(1);
-  } finally {
-    await browser.close();
-    server.kill();
-  }
-})();
+  },
+};

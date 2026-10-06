@@ -1,14 +1,7 @@
-const { chromium } = require('playwright');
-const { exec } = require('child_process');
+const { fail, sleep } = require('./harness');
 
-(async () => {
-  const server = exec('npx serve .');
-  await new Promise(resolve => setTimeout(resolve, 2000));
-
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
-  
-  try {
+module.exports = {
+  async run(page) {
     await page.goto('http://localhost:3000');
     await page.waitForSelector('canvas');
     await page.click('canvas');
@@ -42,23 +35,15 @@ const { exec } = require('child_process');
     // Press 'e' to interact
     await page.keyboard.press('e');
     // Give it a moment to process the interaction
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await sleep(100);
 
     // Check if interact() was called
     const interacted = await page.evaluate(() => window.interacted);
-    
+
     if (interacted) {
       console.log('PASS: Interaction triggered successfully');
-      process.exit(0);
     } else {
-      console.error('FAIL: Interaction was not triggered');
-      process.exit(1);
+      fail('Interaction was not triggered');
     }
-  } catch (e) {
-    console.error('FAIL:', e.message);
-    process.exit(1);
-  } finally {
-    await browser.close();
-    server.kill();
-  }
-})();
+  },
+};

@@ -1,14 +1,7 @@
-const { chromium } = require('playwright');
-const { exec } = require('child_process');
+const { fail, sleep } = require('./harness');
 
-(async () => {
-  const server = exec('npx serve .');
-  await new Promise(resolve => setTimeout(resolve, 2000));
-
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
-
-  try {
+module.exports = {
+  async run(page) {
     await page.goto('http://localhost:3000');
     await page.waitForSelector('canvas');
     await page.click('canvas');
@@ -26,12 +19,10 @@ const { exec } = require('child_process');
     }));
 
     if (initial.boxOpacity !== 0 || initial.textOpacity !== 0) {
-      console.error(`FAIL: Message box/text should be hidden on load. Got boxOpacity=${initial.boxOpacity}, textOpacity=${initial.textOpacity}`);
-      process.exit(1);
+      fail(`Message box/text should be hidden on load. Got boxOpacity=${initial.boxOpacity}, textOpacity=${initial.textOpacity}`);
     }
     if (initial.textContent !== "") {
-      console.error(`FAIL: Text content should be empty on load (no "[object Object]"). Got "${initial.textContent}"`);
-      process.exit(1);
+      fail(`Text content should be empty on load (no "[object Object]"). Got "${initial.textContent}"`);
     }
 
     // --- Phase 2: ui.show() -> text + background appear. ---
@@ -40,7 +31,7 @@ const { exec } = require('child_process');
     await page.evaluate(() => {
       window.ui.show("The air feels heavy here...");
     });
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await sleep(100);
 
     const shown = await page.evaluate(() => ({
       boxOpacity: window.ui.msgBox.opacity,
@@ -49,17 +40,15 @@ const { exec } = require('child_process');
     }));
 
     if (shown.boxOpacity !== 1 || shown.textOpacity !== 1) {
-      console.error(`FAIL: Message box/text should be visible after show(). Got boxOpacity=${shown.boxOpacity}, textOpacity=${shown.textOpacity}`);
-      process.exit(1);
+      fail(`Message box/text should be visible after show(). Got boxOpacity=${shown.boxOpacity}, textOpacity=${shown.textOpacity}`);
     }
     if (shown.textContent !== "The air feels heavy here...") {
-      console.error(`FAIL: Expected "The air feels heavy here...", got "${shown.textContent}"`);
-      process.exit(1);
+      fail(`Expected "The air feels heavy here...", got "${shown.textContent}"`);
     }
 
     // --- Phase 3: After 5 seconds, the text and background must disappear. ---
     // This locks in the fix for the "text never hides" bug (visible->opacity).
-    await new Promise(resolve => setTimeout(resolve, 5500));
+    await sleep(5500);
 
     const hidden = await page.evaluate(() => ({
       boxOpacity: window.ui.msgBox.opacity,
@@ -67,17 +56,9 @@ const { exec } = require('child_process');
     }));
 
     if (hidden.boxOpacity !== 0 || hidden.textOpacity !== 0) {
-      console.error(`FAIL: Message box/text should auto-hide after 5 seconds. Got boxOpacity=${hidden.boxOpacity}, textOpacity=${hidden.textOpacity}`);
-      process.exit(1);
+      fail(`Message box/text should auto-hide after 5 seconds. Got boxOpacity=${hidden.boxOpacity}, textOpacity=${hidden.textOpacity}`);
     }
 
     console.log('PASS: UI message box hidden on load, shown on show(), auto-hidden after 5s');
-    process.exit(0);
-  } catch (e) {
-    console.error('FAIL:', e.message);
-    process.exit(1);
-  } finally {
-    await browser.close();
-    server.kill();
-  }
-})();
+  },
+};

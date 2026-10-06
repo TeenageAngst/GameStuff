@@ -1,19 +1,12 @@
-const { chromium } = require('playwright');
-const { exec } = require('child_process');
+const { fail, sleep } = require('./harness');
 
-(async () => {
-  const server = exec('npx serve .');
-  await new Promise(resolve => setTimeout(resolve, 2000));
-
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
-
-  try {
+module.exports = {
+  async run(page) {
     await page.goto('http://localhost:3000');
     await page.waitForSelector('canvas');
 
     // Wait for assets / background to initialize
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await sleep(2000);
 
     // 1. The old static background sprite must be gone
     const oldSpriteGone = await page.evaluate(() => {
@@ -29,8 +22,7 @@ const { exec } = require('child_process');
     if (oldSpriteGone) {
       console.log('PASS: Old static background sprite removed');
     } else {
-      console.error('FAIL: Old static background sprite still present');
-      process.exit(1);
+      fail('Old static background sprite still present');
     }
 
     // 2. Nebulae exist (4-6), tagged, with z(-100)
@@ -45,8 +37,7 @@ const { exec } = require('child_process');
     if (nebulae.length >= 4 && nebulae.length <= 6) {
       console.log(`PASS: ${nebulae.length} nebulae present`);
     } else {
-      console.error(`FAIL: Expected 4-6 nebulae, got ${nebulae.length}`);
-      process.exit(1);
+      fail(`Expected 4-6 nebulae, got ${nebulae.length}`);
     }
 
     // 3. Particles exist (50-100), tagged, with z(-90)
@@ -60,8 +51,7 @@ const { exec } = require('child_process');
     if (particles.length >= 50 && particles.length <= 100) {
       console.log(`PASS: ${particles.length} particles present`);
     } else {
-      console.error(`FAIL: Expected 50-100 particles, got ${particles.length}`);
-      process.exit(1);
+      fail(`Expected 50-100 particles, got ${particles.length}`);
     }
 
     // 4. Z-layering: nebulae z(-100), particles z(-90)
@@ -69,8 +59,7 @@ const { exec } = require('child_process');
     if (zOk) {
       console.log('PASS: Z-layering correct (nebulae -100, particles -90)');
     } else {
-      console.error('FAIL: Z-layering incorrect');
-      process.exit(1);
+      fail('Z-layering incorrect');
     }
 
     // 5. Twinkle: particle opacity changes over time (sample 3 times)
@@ -79,28 +68,27 @@ const { exec } = require('child_process');
       return p ? p.opacity : null;
     });
     const op1 = await sampleOpacity();
-    await new Promise(resolve => setTimeout(resolve, 250));
+    await sleep(250);
     const op2 = await sampleOpacity();
-    await new Promise(resolve => setTimeout(resolve, 250));
+    await sleep(250);
     const op3 = await sampleOpacity();
     const twinkles = [op1, op2, op3].some(o => o !== op1);
     if (op1 !== null && twinkles) {
       console.log('PASS: Particles twinkle (opacity changes over time)');
     } else {
-      console.error(`FAIL: Particles do not twinkle (op1=${op1}, op2=${op2}, op3=${op3})`);
-      process.exit(1);
+      fail(`Particles do not twinkle (op1=${op1}, op2=${op2}, op3=${op3})`);
     }
 
     // 6. Parallax: moving the player shifts the background; particles shift more than nebulae
     await page.evaluate(() => { window.player.pos.x = 400; window.player.pos.y = 300; });
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await sleep(200);
     const before = await page.evaluate(() => {
       const n = window.k.get().find(obj => obj.bgNebula);
       const p = window.k.get().find(obj => obj.bgParticle);
       return { nx: n.pos.x, px: p.pos.x };
     });
     await page.evaluate(() => { window.player.pos.x += 200; });
-    await new Promise(resolve => setTimeout(resolve, 300));
+    await sleep(300);
     const after = await page.evaluate(() => {
       const n = window.k.get().find(obj => obj.bgNebula);
       const p = window.k.get().find(obj => obj.bgParticle);
@@ -111,8 +99,7 @@ const { exec } = require('child_process');
     if (particleShift > nebulaShift && particleShift > 0) {
       console.log(`PASS: Parallax (particleShift=${particleShift.toFixed(1)} > nebulaShift=${nebulaShift.toFixed(1)})`);
     } else {
-      console.error(`FAIL: Parallax incorrect (nebulaShift=${nebulaShift}, particleShift=${particleShift})`);
-      process.exit(1);
+      fail(`Parallax incorrect (nebulaShift=${nebulaShift}, particleShift=${particleShift})`);
     }
 
     // 7. Wrap-around: teleport a nebula's base position well past the right edge;
@@ -133,8 +120,7 @@ const { exec } = require('child_process');
     if (wrapBaseX <= 0) {
       console.log(`PASS: Wrap-around (nebula re-entered at baseX=${wrapBaseX.toFixed(1)})`);
     } else {
-      console.error(`FAIL: Wrap-around did not trigger (baseX=${wrapBaseX})`);
-      process.exit(1);
+      fail(`Wrap-around did not trigger (baseX=${wrapBaseX})`);
     }
 
     // 8. Pool stability: object counts must stay constant (no runtime allocation/GC spikes)
@@ -145,7 +131,7 @@ const { exec } = require('child_process');
         particles: objs.filter(o => o.bgParticle).length,
       };
     });
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await sleep(1000);
     const countAfter = await page.evaluate(() => {
       const objs = window.k.get();
       return {
@@ -156,8 +142,7 @@ const { exec } = require('child_process');
     if (countBefore.nebulae === countAfter.nebulae && countBefore.particles === countAfter.particles) {
       console.log(`PASS: Pool stable (nebulae=${countAfter.nebulae}, particles=${countAfter.particles} unchanged over 1s)`);
     } else {
-      console.error(`FAIL: Pool not stable (before=${JSON.stringify(countBefore)}, after=${JSON.stringify(countAfter)})`);
-      process.exit(1);
+      fail(`Pool not stable (before=${JSON.stringify(countBefore)}, after=${JSON.stringify(countAfter)})`);
     }
 
     // 9. Performance: measure FPS over 1s; must hold a playable frame rate with 100+ objects
@@ -177,8 +162,7 @@ const { exec } = require('child_process');
     if (fps >= 30) {
       console.log(`PASS: Performance (${fps} FPS with ${countAfter.nebulae + countAfter.particles} background objects)`);
     } else {
-      console.error(`FAIL: Performance too low (${fps} FPS)`);
-      process.exit(1);
+      fail(`Performance too low (${fps} FPS)`);
     }
 
     // 10. Integration: game objects (interactables) exist and render on top of the background.
@@ -196,17 +180,9 @@ const { exec } = require('child_process');
     if (integration.interactableCount > 0 && integration.gameMinZ > integration.bgMaxZ) {
       console.log(`PASS: Integration (${integration.interactableCount} game objects on top; gameZ=${integration.gameMinZ} > bgZ=${integration.bgMaxZ})`);
     } else {
-      console.error(`FAIL: Integration incorrect (interactables=${integration.interactableCount}, gameZ=${integration.gameMinZ}, bgZ=${integration.bgMaxZ})`);
-      process.exit(1);
+      fail(`Integration incorrect (interactables=${integration.interactableCount}, gameZ=${integration.gameMinZ}, bgZ=${integration.bgMaxZ})`);
     }
 
     console.log('ALL BACKGROUND TESTS PASSED');
-    process.exit(0);
-  } catch (e) {
-    console.error('FAIL:', e.message);
-    process.exit(1);
-  } finally {
-    await browser.close();
-    server.kill();
-  }
-})();
+  },
+};
