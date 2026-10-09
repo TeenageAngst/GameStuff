@@ -11,13 +11,14 @@
 // context. Instead we use a separate <canvas> positioned exactly over the
 // game canvas and redraw it every frame in k.onUpdate.
 
+import { computeShadowPolygon, SHADOW_MAX_DIST } from "./shadowGeometry.js";
+
 const DARKNESS = 0.65; // overlay opacity when no lights are on (default)
 const LIGHT_RADIUS = 220; // radius (px) of a light's illumination
 const FADE_TIME = 0.2; // seconds to fade a light in/out
 const CORE_RADIUS = 20; // bright core drawn above the darkness at the source
 const SHADOW_OPACITY = 0.85; // peak darkness of a shadow (just behind the object)
 const SHADOW_MARGIN = 2; // px padding around a caster so its body stays in shadow
-const SHADOW_MAX_DIST = 1200; // max distance a caster can be from a light to cast
 const SHADOW_FADE = 0.7; // fraction of the light radius over which the shadow fades out
 const SHADOW_SOFT = 8; // px blur radius for softening the shadow's edges
 
@@ -126,104 +127,11 @@ export function createLighting(k) {
     }
 
     // Compute the shadow polygon for a caster box relative to light center
-    // (lx, ly). Returns an object { poly, nearDist, farDist } where `poly` is
-    // an array of {x, y} points forming a convex polygon, `nearDist` is the
-    // distance from the light to the box's near edge, and `farDist` is the
-    // distance to the box's far edge. Returns null if the caster is too far
-    // away to matter.
-    //
-    // The shadow is the region BEHIND the caster (away from the light) that
-    // the light cannot reach. It starts at the box's far edge (so the object
-    // itself stays lit) and diverges outward, bounded by the two silhouette
-    // rays (the light's tangent rays to the box). The resulting trapezoid
-    // covers exactly the region behind the caster.
+    // (lx, ly). Thin wrapper around the pure geometry in shadowGeometry.js
+    // (unit-tested in tests/shadow.test.js). Returns { poly, nearDist,
+    // farDist } or null if the caster is too far away to matter.
     function shadowPolygon(lx, ly, box) {
-        const left = box.x;
-        const right = box.x + box.w;
-        const top = box.y;
-        const bottom = box.y + box.h;
-        const bcx = (left + right) / 2;
-        const bcy = (top + bottom) / 2;
-        const dx = bcx - lx;
-        const dy = bcy - ly;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < 0.001 || dist > SHADOW_MAX_DIST) return null;
-        const D = { x: dx / dist, y: dy / dist }; // unit vector light -> box center
-
-        // The two silhouette corners are the box corners the light's tangent
-        // rays graze. We find them by computing each corner's angle relative
-        // to the light-to-box-center direction and taking the min and max.
-        const baseAngle = Math.atan2(bcy - ly, bcx - lx);
-        const corners = [
-            { x: left, y: top },
-            { x: right, y: top },
-            { x: right, y: bottom },
-            { x: left, y: bottom },
-        ];
-        let minRel = Infinity;
-        let maxRel = -Infinity;
-        let c1 = corners[0];
-        let c2 = corners[0];
-        for (const c of corners) {
-            const abs = Math.atan2(c.y - ly, c.x - lx);
-            let rel = abs - baseAngle;
-            while (rel > Math.PI) rel -= 2 * Math.PI;
-            while (rel < -Math.PI) rel += 2 * Math.PI;
-            if (rel < minRel) { minRel = rel; c1 = c; }
-            if (rel > maxRel) { maxRel = rel; c2 = c; }
-        }
-
-        // The far edge is the box edge whose outward normal is most aligned
-        // with D (the light-to-box-center direction). Its two endpoints are
-        // the near boundary of the shadow (the shadow starts here, so the
-        // object stays lit).
-        const edges = [
-            { n: { x: 1, y: 0 }, a: { x: right, y: top }, b: { x: right, y: bottom } },
-            { n: { x: -1, y: 0 }, a: { x: left, y: top }, b: { x: left, y: bottom } },
-            { n: { x: 0, y: 1 }, a: { x: left, y: bottom }, b: { x: right, y: bottom } },
-            { n: { x: 0, y: -1 }, a: { x: left, y: top }, b: { x: right, y: top } },
-        ];
-        let best = edges[0];
-        let bestDot = -Infinity;
-        for (const e of edges) {
-            const dot = e.n.x * D.x + e.n.y * D.y;
-            if (dot > bestDot) { bestDot = dot; best = e; }
-        }
-        let f1 = best.a;
-        let f2 = best.b;
-        // For a diagonal light, the far boundary is the single corner where
-        // the two most-aligned edges meet. Use that corner (degenerate
-        // trapezoid -> triangle) so the shadow starts at the far corner.
-        if (bestDot < 0.99) {
-            let far = corners[0];
-            let farProj = -Infinity;
-            for (const c of corners) {
-                const proj = (c.x - bcx) * D.x + (c.y - bcy) * D.y;
-                if (proj > farProj) { farProj = proj; far = c; }
-            }
-            f1 = far;
-            f2 = far;
-        }
-
-        // Project the far-edge endpoints outward from the light to the shadow
-        // boundary (SHADOW_MAX_DIST). The shadow polygon is the quadrilateral
-        // f1 -> p1 -> p2 -> f2.
-        function project(corner) {
-            const vx = corner.x - lx;
-            const vy = corner.y - ly;
-            const len = Math.sqrt(vx * vx + vy * vy);
-            if (len < 0.001) return { x: corner.x, y: corner.y };
-            const t = SHADOW_MAX_DIST / len;
-            return { x: lx + vx * t, y: ly + vy * t };
-        }
-        const p1 = project(f1);
-        const p2 = project(f2);
-
-        // Near/far distances from the light to the box (for the gradient).
-        const nearDist = dist - Math.max(box.w, box.h) / 2;
-        const farDist = dist + Math.max(box.w, box.h) / 2;
-
-        return { poly: [f1, p1, p2, f2], nearDist: Math.max(0, nearDist), farDist };
+        return computeShadowPolygon(lx, ly, box, SHADOW_MAX_DIST);
     }
     // Current darkness level (0 = fully lit, 1 = fully dark). Defaults to the
     // DARKNESS constant; rooms can override it via setDarkness().
