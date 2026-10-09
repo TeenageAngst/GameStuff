@@ -17,7 +17,6 @@ const DARKNESS = 0.65; // overlay opacity when no lights are on (default)
 const LIGHT_RADIUS = 220; // radius (px) of a light's illumination
 const FADE_TIME = 0.2; // seconds to fade a light in/out
 const CORE_RADIUS = 20; // bright core drawn above the darkness at the source
-const SHADOW_OPACITY = 0.85; // peak darkness of a shadow (just behind the object)
 const SHADOW_MARGIN = 2; // px padding around a caster so its body stays in shadow
 const SHADOW_FADE = 0.7; // fraction of the light radius over which the shadow fades out
 const SHADOW_SOFT = 8; // px blur radius for softening the shadow's edges
@@ -42,6 +41,16 @@ export function createLighting(k) {
     overlay.style.zIndex = "10";
     document.body.appendChild(overlay);
     const octx = overlay.getContext("2d");
+
+    // Offscreen temp canvas (same size as the overlay) used to compose each
+    // light's illumination minus its shadows before carving it into the main
+    // overlay. This lets shadows *block* light (subtractive) instead of adding
+    // black on top of the already-erased light hole (which made shadows darker
+    // than the ambient background).
+    const temp = document.createElement("canvas");
+    temp.width = W;
+    temp.height = H;
+    const tctx = temp.getContext("2d");
 
     // Position the overlay to exactly cover the game canvas (viewport coords).
     function positionOverlay() {
@@ -157,70 +166,74 @@ export function createLighting(k) {
         octx.fillStyle = `rgba(0, 0, 0, ${darkness})`;
         octx.fillRect(0, 0, W, H);
 
-        // 3. Erase a smooth radial hole for each active light. The gradient
-        //    goes from fully opaque (full erase) at the center to fully
-        //    transparent (no erase) at the edge, giving a soft falloff.
-        octx.globalCompositeOperation = "destination-out";
-        for (const light of lights) {
-            if (light.intensity <= 0) continue;
-            const { x, y } = lightCenter(light);
-            const grad = octx.createRadialGradient(x, y, 0, x, y, LIGHT_RADIUS);
-            grad.addColorStop(0, `rgba(0, 0, 0, ${light.intensity})`);
-            grad.addColorStop(0.6, `rgba(0, 0, 0, ${light.intensity * 0.55})`);
-            grad.addColorStop(1, "rgba(0, 0, 0, 0)");
-            octx.fillStyle = grad;
-            octx.beginPath();
-            octx.arc(x, y, LIGHT_RADIUS, 0, Math.PI * 2);
-            octx.fill();
-        }
-
-        // 4. Re-darken shadow cones. For each active light, compute the
-        //    shadow of every shadow-casting object and fill the shadow region
-        //    with darkness. This carves the shadow out of the light's hole.
-        //    Each light's shadows are clipped to its radius so they never
-        //    extend beyond the lit area.
+        // 3. Carve a smooth radial hole for each active light, minus its
+        //    shadows. For each light we compose its illumination on the temp
+        //    canvas, then *erase* the shadow polygons out of it (subtractive),
+        //    and finally carve the result into the main overlay.
         //
-        //    The shadow is a soft cone: it starts at the object's far edge
-        //    (so the object itself stays lit) and fades out over
-        //    SHADOW_FADE * LIGHT_RADIUS. A radial gradient centered on the
-        //    light provides the fade, and a blur filter softens the edges so
-        //    the shadow looks like light bending around the object rather
-        //    than a hard polygon.
-        octx.globalCompositeOperation = "source-over";
+        //    Why subtractive: a shadow should only block the light and return
+        //    that region to the ambient darkness level. The old approach added
+        //    black on top of the already-erased light hole, which made the
+        //    shadow darker than the surrounding background (and produced a hard
+        //    "pop" at the light edge). Erasing the shadow from the light's
+        //    illumination instead means the shadow region simply keeps the
+        //    ambient darkness — it can never be darker than the background.
         for (const light of lights) {
             if (light.intensity <= 0) continue;
             const { x: lx, y: ly } = lightCenter(light);
-            octx.save();
-            octx.beginPath();
-            octx.arc(lx, ly, LIGHT_RADIUS, 0, Math.PI * 2);
-            octx.clip();
-            octx.filter = `blur(${SHADOW_SOFT}px)`;
+
+            // 3a. Draw this light's radial illumination onto the temp canvas.
+            tctx.clearRect(0, 0, W, H);
+            tctx.globalCompositeOperation = "source-over";
+            const grad = tctx.createRadialGradient(lx, ly, 0, lx, ly, LIGHT_RADIUS);
+            grad.addColorStop(0, `rgba(0, 0, 0, ${light.intensity})`);
+            grad.addColorStop(0.6, `rgba(0, 0, 0, ${light.intensity * 0.55})`);
+            grad.addColorStop(1, "rgba(0, 0, 0, 0)");
+            tctx.fillStyle = grad;
+            tctx.beginPath();
+            tctx.arc(lx, ly, LIGHT_RADIUS, 0, Math.PI * 2);
+            tctx.fill();
+
+            // 3b. Erase each shadow polygon out of the light's illumination.
+            //     The shadow is a soft cone: it starts at the object's far
+            //     edge (so the object itself stays lit) and fades out over
+            //     SHADOW_FADE * LIGHT_RADIUS. A radial gradient centered on
+            //     the light provides the fade, and a blur filter softens the
+            //     edges so the shadow looks like light bending around the
+            //     object rather than a hard polygon.
+            tctx.globalCompositeOperation = "destination-out";
+            tctx.filter = `blur(${SHADOW_SOFT}px)`;
             for (const caster of shadowCasters) {
                 if (caster.destroyed) continue;
                 const box = casterBox(caster, SHADOW_MARGIN);
                 const result = shadowPolygon(lx, ly, box);
                 if (!result) continue;
                 const { poly, farDist } = result;
-                // Radial gradient centered on the light: fully dark at the
-                // object's far edge, fading to transparent at the edge of the
-                // light's radius. This makes the shadow soften with distance.
+                // Radial gradient centered on the light: fully opaque (full
+                // erase) at the object's far edge, fading to transparent at
+                // the edge of the light's radius. This makes the shadow
+                // soften with distance.
                 const fadeEnd = farDist + SHADOW_FADE * LIGHT_RADIUS;
-                const grad = octx.createRadialGradient(lx, ly, 0, lx, ly, Math.max(fadeEnd, 1));
-                const peak = SHADOW_OPACITY * light.intensity;
-                grad.addColorStop(0, `rgba(0, 0, 0, ${peak})`);
-                grad.addColorStop(Math.min(1, farDist / fadeEnd), `rgba(0, 0, 0, ${peak})`);
-                grad.addColorStop(1, "rgba(0, 0, 0, 0)");
-                octx.fillStyle = grad;
-                octx.beginPath();
-                octx.moveTo(poly[0].x, poly[0].y);
+                const sgrad = tctx.createRadialGradient(lx, ly, 0, lx, ly, Math.max(fadeEnd, 1));
+                const peak = light.intensity;
+                sgrad.addColorStop(0, `rgba(0, 0, 0, ${peak})`);
+                sgrad.addColorStop(Math.min(1, farDist / fadeEnd), `rgba(0, 0, 0, ${peak})`);
+                sgrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+                tctx.fillStyle = sgrad;
+                tctx.beginPath();
+                tctx.moveTo(poly[0].x, poly[0].y);
                 for (let i = 1; i < poly.length; i++) {
-                    octx.lineTo(poly[i].x, poly[i].y);
+                    tctx.lineTo(poly[i].x, poly[i].y);
                 }
-                octx.closePath();
-                octx.fill();
+                tctx.closePath();
+                tctx.fill();
             }
-            octx.filter = "none";
-            octx.restore();
+            tctx.filter = "none";
+
+            // 3c. Carve the composed illumination (minus shadows) into the
+            //     main overlay, erasing the ambient darkness there.
+            octx.globalCompositeOperation = "destination-out";
+            octx.drawImage(temp, 0, 0);
         }
 
         // 5. Draw a small bright core above the darkness for each active light
