@@ -43,9 +43,9 @@ export function createNarrative(k, id, pos, ui) {
 export function createLight(k, id, pos, lighting) {
     const room = id.split('.')[0];
     const light = k.add([
-        k.rect(32, 32),
+        k.sprite("lamp.png"),
+        k.scale(2),
         k.pos(pos),
-        k.color(255, 255, 0),
         k.area(),
         k.body({ isStatic: true }),
         "interactable",

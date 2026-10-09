@@ -19,6 +19,7 @@ window.k = k;
 // Load the player sprite, then start the game once the asset is ready so
 // k.sprite() has the image available.
 k.loadSprite("player.png", "assets/player.png");
+k.loadSprite("lamp.png", "assets/lamp.png");
 k.onLoad(() => {
     const ui = createUI(k);
     window.ui = ui;
@@ -31,6 +32,9 @@ k.onLoad(() => {
     // Lighting system: darkness overlay with smooth radial holes around lights.
     const lighting = createLighting(k);
     window.lighting = lighting;
+
+    // The player casts a shadow from any active light.
+    lighting.registerShadowCaster(player);
 
     // Expose factories for testing (tests create objects at runtime).
     // Naming convention: <room>.<type>.<name>
