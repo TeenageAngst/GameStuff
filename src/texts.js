@@ -10,6 +10,6 @@
 
 export const TEXTS = {
     "main.narrative.air": "The air feels heavy here...",
-    "main.door.south": "A bright, empty room. A single door leads back.",
+    "main.door.south": "A dark room. Two lamps wait in the gloom — one green, one red.",
     "empty.door.north": "Back where you started.",
 };

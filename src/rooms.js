@@ -43,9 +43,9 @@ const ROOMS = {
         },
     },
     [ROOM_IDS.EMPTY]: {
-        darkness: 0,
+        darkness: 0.7,
         build(k, ctx) {
-            const { W, H, createDoor } = ctx;
+            const { W, H, createDoor, lighting } = ctx;
             const objects = [];
             const WALL = 24;
             // Floor: a large, bright, clearly defined surface.
@@ -61,7 +61,12 @@ const ROOMS = {
             objects.push(k.add([k.rect(W, WALL), k.pos(0, H - WALL), k.color(wallColor), k.z(-40)]));
             objects.push(k.add([k.rect(WALL, H), k.pos(0, 0), k.color(wallColor), k.z(-40)]));
             objects.push(k.add([k.rect(WALL, H), k.pos(W - WALL, 0), k.color(wallColor), k.z(-40)]));
-            // The only thing in the room: a door back to the main room.
+            // Two colored lamps placed close together so their pools overlap
+            // significantly. The room is dark, so each lamp carves out a pool
+            // of its own color; where the pools overlap the hues blend.
+            objects.push(createLight(k, "empty.light.green", [W * 0.40, H * 0.45], lighting, [80, 255, 120]));
+            objects.push(createLight(k, "empty.light.red", [W * 0.60, H * 0.45], lighting, [255, 70, 60]));
+            // A door back to the main room.
             const door = createDoor("empty.door.north", [W / 2 - 24, WALL], ROOM_IDS.MAIN);
             objects.push(door, door.frame, door.handle);
             return objects;

@@ -20,6 +20,7 @@ const CORE_RADIUS = 20; // bright core drawn above the darkness at the source
 const SHADOW_MARGIN = 2; // px padding around a caster so its body stays in shadow
 const SHADOW_FADE = 0.7; // fraction of the light radius over which the shadow fades out
 const SHADOW_SOFT = 8; // px blur radius for softening the shadow's edges
+const GLOW_STRENGTH = 0.6; // how strongly a light's color tints its lit area
 
 export function createLighting(k) {
     const W = k.width();
@@ -42,6 +43,22 @@ export function createLighting(k) {
     document.body.appendChild(overlay);
     const octx = overlay.getContext("2d");
 
+    // Glow canvas sits ABOVE the darkness overlay. It is purely additive: it
+    // holds each light's colored halo and is drawn with "screen"-like blending
+    // (via CSS mix-blend-mode) so it tints the scene without adding darkness.
+    // Keeping it separate from the darkness overlay is essential — the overlay's
+    // alpha IS the darkness level, so adding color there would re-darken the
+    // very area the light is meant to illuminate.
+    const glow = document.createElement("canvas");
+    glow.width = W;
+    glow.height = H;
+    glow.style.position = "fixed";
+    glow.style.pointerEvents = "none";
+    glow.style.zIndex = "11";
+    glow.style.mixBlendMode = "screen";
+    document.body.appendChild(glow);
+    const gctx = glow.getContext("2d");
+
     // Offscreen temp canvas (same size as the overlay) used to compose each
     // light's illumination minus its shadows before carving it into the main
     // overlay. This lets shadows *block* light (subtractive) instead of adding
@@ -52,14 +69,16 @@ export function createLighting(k) {
     temp.height = H;
     const tctx = temp.getContext("2d");
 
-    // Position the overlay to exactly cover the game canvas (viewport coords).
+    // Position both canvases to exactly cover the game canvas (viewport coords).
     function positionOverlay() {
         if (!gameCanvas) return;
         const rect = gameCanvas.getBoundingClientRect();
-        overlay.style.left = rect.left + "px";
-        overlay.style.top = rect.top + "px";
-        overlay.style.width = rect.width + "px";
-        overlay.style.height = rect.height + "px";
+        for (const c of [overlay, glow]) {
+            c.style.left = rect.left + "px";
+            c.style.top = rect.top + "px";
+            c.style.width = rect.width + "px";
+            c.style.height = rect.height + "px";
+        }
     }
     positionOverlay();
     window.addEventListener("resize", positionOverlay);
@@ -80,6 +99,12 @@ export function createLighting(k) {
         const w = (light.width || 32) * sx;
         const h = (light.height || 32) * sy;
         return { x: light.pos.x + w / 2, y: light.pos.y + h / 2 };
+    }
+
+    // Returns the light's color as an [r, g, b] array. Defaults to warm white
+    // for lights that don't specify a color (e.g. the main room's lamp).
+    function lightColor(light) {
+        return light.lightColor || [255, 240, 200];
     }
 
     // --- Shadow casting -------------------------------------------------
@@ -160,11 +185,15 @@ export function createLighting(k) {
                     : Math.max(target, light.intensity - step);
         }
 
-        // 2. Fill the overlay with darkness.
+        // 2. Fill the overlay with darkness and clear the glow canvas. Both
+        //    are reset at the start of the frame so the per-light loop below
+        //    accumulates fresh content on top.
         octx.globalCompositeOperation = "source-over";
         octx.clearRect(0, 0, W, H);
         octx.fillStyle = `rgba(0, 0, 0, ${darkness})`;
         octx.fillRect(0, 0, W, H);
+        gctx.globalCompositeOperation = "source-over";
+        gctx.clearRect(0, 0, W, H);
 
         // 3. Carve a smooth radial hole for each active light, minus its
         //    shadows. For each light we compose its illumination on the temp
@@ -234,17 +263,36 @@ export function createLighting(k) {
             //     main overlay, erasing the ambient darkness there.
             octx.globalCompositeOperation = "destination-out";
             octx.drawImage(temp, 0, 0);
+
+            // 3d. Tint the illuminated region with the light's color on the
+            //     separate glow canvas. The temp canvas still holds the
+            //     illumination-minus-shadows shape, so we scale its alpha down
+            //     (destination-in), convert it to the light's color (source-in),
+            //     and additively composite it onto the glow canvas. The glow
+            //     canvas uses CSS mix-blend-mode: screen, so it brightens the
+            //     scene with the light's hue without adding any darkness.
+            const [cr, cg, cb] = lightColor(light);
+            tctx.globalCompositeOperation = "destination-in";
+            tctx.fillStyle = `rgba(0, 0, 0, ${GLOW_STRENGTH})`;
+            tctx.fillRect(0, 0, W, H);
+            tctx.globalCompositeOperation = "source-in";
+            tctx.fillStyle = `rgb(${cr}, ${cg}, ${cb})`;
+            tctx.fillRect(0, 0, W, H);
+            gctx.globalCompositeOperation = "lighter";
+            gctx.drawImage(temp, 0, 0);
         }
 
         // 5. Draw a small bright core above the darkness for each active light
-        //    so the source itself stays visible.
+        //    so the source itself stays visible. The core uses the light's own
+        //    color so colored lamps glow in their hue.
         octx.globalCompositeOperation = "lighter";
         for (const light of lights) {
             if (light.intensity <= 0) continue;
             const { x, y } = lightCenter(light);
+            const [cr, cg, cb] = lightColor(light);
             const core = octx.createRadialGradient(x, y, 0, x, y, CORE_RADIUS);
-            core.addColorStop(0, `rgba(255, 240, 200, ${0.9 * light.intensity})`);
-            core.addColorStop(1, "rgba(255, 240, 200, 0)");
+            core.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, ${0.9 * light.intensity})`);
+            core.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0)`);
             octx.fillStyle = core;
             octx.beginPath();
             octx.arc(x, y, CORE_RADIUS, 0, Math.PI * 2);
@@ -277,12 +325,13 @@ export function createLighting(k) {
             darkness = Math.max(0, Math.min(1, level));
         },
         // Tear down the lighting system: stop the update loop, remove the
-        // resize listener, and remove the overlay canvas from the DOM.
+        // resize listener, and remove both canvases from the DOM.
         destroy() {
             destroyed = true;
             updateController.cancel();
             window.removeEventListener("resize", positionOverlay);
             overlay.remove();
+            glow.remove();
             lights.clear();
             shadowCasters.clear();
         },

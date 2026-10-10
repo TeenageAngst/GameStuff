@@ -40,9 +40,13 @@ export function createNarrative(k, id, pos, ui) {
 // Creates a light-source object. When toggled on (via interact), it
 // illuminates the scene within the lighting system's radius; when off, the
 // scene returns to darkness. The lighting system handles the actual glow.
-export function createLight(k, id, pos, lighting) {
+//
+// `color` is an optional [r, g, b] array that tints the light's glow and
+// core (e.g. [80, 255, 120] for green). When omitted, the lighting system
+// falls back to warm white. The lamp sprite is also tinted to match.
+export function createLight(k, id, pos, lighting, color) {
     const room = id.split('.')[0];
-    const light = k.add([
+    const components = [
         k.sprite("lamp.png"),
         k.scale(2),
         k.pos(pos),
@@ -53,11 +57,18 @@ export function createLight(k, id, pos, lighting) {
         `room:${room}`,
         {
             lightOn: false,
+            lightColor: color,
             interact: () => {
                 light.lightOn = !light.lightOn;
             },
         }
-    ]);
+    ];
+    // Tint the lamp sprite to match the light's color so the source reads
+    // as the right hue even before the glow is visible.
+    if (color) {
+        components.push(k.color(color[0], color[1], color[2]));
+    }
+    const light = k.add(components);
 
     if (lighting) {
         lighting.register(light);
