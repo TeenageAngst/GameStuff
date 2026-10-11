@@ -58,8 +58,11 @@ export function createLight(k, id, pos, lighting, color) {
         {
             lightOn: false,
             lightColor: color,
+            // When a wall switch (or another fixture) owns this lamp, direct
+            // interaction is disabled and only the switch can flip it.
+            directToggle: true,
             interact: () => {
-                light.lightOn = !light.lightOn;
+                if (light.directToggle) light.lightOn = !light.lightOn;
             },
         }
     ];
@@ -75,6 +78,40 @@ export function createLight(k, id, pos, lighting, color) {
     }
 
     return light;
+}
+
+// Creates a wall-mounted light switch for a lamp: a small plate with a
+// toggle nub. Pressing E while touching it flips the target lamp's
+// `lightOn`, and the nub visibly flips up (on) / down (off) to match.
+// `lamp` is the light object returned by createLight; its own directToggle
+// is usually disabled so the switch is the only way to flip it.
+export function createLightSwitch(k, id, pos, lamp) {
+    const room = id.split('.')[0];
+    const plate = k.add([
+        k.rect(16, 24),
+        k.pos(pos),
+        k.anchor("center"),
+        k.color(225, 220, 205),
+        k.area(),
+        "interactable",
+        id,
+        `room:${room}`,
+        {
+            interact: () => {
+                lamp.lightOn = !lamp.lightOn;
+                nub.pos.y = pos[1] + (lamp.lightOn ? -5 : 5);
+            },
+        },
+    ]);
+    // Toggle nub: rides on the plate, up when the lamp is on.
+    const nub = k.add([
+        k.rect(6, 10),
+        k.pos(pos[0], pos[1] + 5), // lamp starts off, so the nub starts down
+        k.anchor("center"),
+        k.color(90, 85, 75),
+        `room:${room}`,
+    ]);
+    return [plate, nub];
 }
 
 // Creates a light director: a small ring housing around a lamp, with a
