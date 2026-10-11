@@ -1,4 +1,4 @@
-import { createNarrative, createLight, createStat, createLightDirector, createLightSwitch } from './objects.js';
+import { createNarrative, createLight, createStat, createLightDirector } from './objects.js';
 import { TEXTS } from './texts.js';
 
 // Room manager: builds rooms from a data-driven registry, with fade transitions.
@@ -65,19 +65,11 @@ const ROOMS = {
             // significantly. The room is dark, so each lamp carves out a pool
             // of its own color; where the pools overlap the hues blend.
             objects.push(createLight(k, "empty.light.green", [W * 0.40, H * 0.45], lighting, [80, 255, 120]));
-            // The red lamp lives inside the director housing, so it can't be
-            // toggled directly — the wall switch beside the door owns it.
-            const redLamp = createLight(k, "empty.light.red", [W * 0.60, H * 0.45], lighting, [255, 70, 60]);
-            redLamp.directToggle = false;
-            objects.push(redLamp);
-            // Wall switch for the red lamp, on the north wall by the door.
-            objects.push(...createLightSwitch(k, "empty.switch.red", [W / 2 + 60, WALL / 2], redLamp));
-            // A light director: a C-shaped occluder centered on the red lamp.
-            // The player pushes the handle to rotate the C, directing the beam
-            // (the opening) in different directions. Light only escapes through
-            // the gap, creating a sweeping spotlight effect.
-            const redLampPos = [W * 0.60, H * 0.45];
-            objects.push(...createLightDirector(k, "empty.director.main", redLampPos, lighting, player));
+            objects.push(createLight(k, "empty.light.red", [W * 0.60, H * 0.45], lighting, [255, 70, 60]));
+            // A light director: a small ring housing around the red lamp with a
+            // single aperture. The player pushes the housing to spin it,
+            // sweeping the beam around the room.
+            objects.push(...createLightDirector(k, "empty.director.main", redLamp, lighting, player));
             // A door back to the main room.
             const door = createDoor("empty.door.north", [W / 2 - 24, WALL], ROOM_IDS.MAIN);
             objects.push(door, door.frame, door.handle);

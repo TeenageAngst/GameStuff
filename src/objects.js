@@ -58,11 +58,8 @@ export function createLight(k, id, pos, lighting, color) {
         {
             lightOn: false,
             lightColor: color,
-            // When a wall switch (or another fixture) owns this lamp, direct
-            // interaction is disabled and only the switch can flip it.
-            directToggle: true,
             interact: () => {
-                if (light.directToggle) light.lightOn = !light.lightOn;
+                light.lightOn = !light.lightOn;
             },
         }
     ];
@@ -80,176 +77,87 @@ export function createLight(k, id, pos, lighting, color) {
     return light;
 }
 
-// Creates a wall-mounted light switch for a lamp: a small plate with a
-// toggle nub. Pressing E while touching it flips the target lamp's
-// `lightOn`, and the nub visibly flips up (on) / down (off) to match.
-// `lamp` is the light object returned by createLight; its own directToggle
-// is usually disabled so the switch is the only way to flip it.
-export function createLightSwitch(k, id, pos, lamp) {
-    const room = id.split('.')[0];
-    const plate = k.add([
-        k.rect(16, 24),
-        k.pos(pos),
-        k.anchor("center"),
-        k.color(225, 220, 205),
-        k.area(),
-        "interactable",
-        id,
-        `room:${room}`,
-        {
-            interact: () => {
-                lamp.lightOn = !lamp.lightOn;
-                nub.pos.y = pos[1] + (lamp.lightOn ? -5 : 5);
-            },
-        },
-    ]);
-    // Toggle nub: rides on the plate, up when the lamp is on.
-    const nub = k.add([
-        k.rect(6, 10),
-        k.pos(pos[0], pos[1] + 5), // lamp starts off, so the nub starts down
-        k.anchor("center"),
-        k.color(90, 85, 75),
-        `room:${room}`,
-    ]);
-    return [plate, nub];
-}
-
-// Creates a light director: a C-shaped occluder centered on a light source,
-// with a handle bar on the back. The player pushes the handle to rotate the
-// C around the light, directing the beam (the opening) in different directions.
+// Creates a light director: a small ring housing around a lamp, with a
+// single aperture the light shines through. The player pushes the housing
+// itself to spin it, sweeping the beam around the room.
 //
-// The C is made of 3 bars (top, left, bottom) arranged in a circle around the
-// light, with a 90° gap on the right side (the opening) at angle 0. The handle
-// is a small bar on the back (left side at angle 0). The player pushes the
-// handle to rotate the C; the opening sweeps around the light, directing the
-// beam.
+// The housing is a ring of thin wall segments (each its own shadow caster,
+// registered via the "interactable" tag, which rooms.js auto-registers),
+// with a 40-degree gap as the aperture. The segments use the `k.rotate(deg)`
+// component for rotation (entity property: obj.angle), and the shadow system
+// supports rotated boxes (see shadowGeometry.js).
 //
-// Each bar and the handle are separate shadow casters (registered via the
-// "interactable" tag, which rooms.js auto-registers). The bars use the
-// `k.rotate(deg)` component for rotation (entity property: obj.angle), and
-// the shadow system now supports rotated boxes (see shadowGeometry.js).
-export function createLightDirector(k, id, pos, lighting, player) {
+// `lamp` is the light object returned by createLight. The housing is
+// centered on the lamp's rendered center (mirroring lightCenter in
+// lighting.js), not on its top-left pos.
+export function createLightDirector(k, id, lamp, lighting, player) {
     const room = id.split('.')[0];
-    const R = 70;          // radius of the C (distance from center to bar centers)
-    const BAR = 20;        // thickness of each bar
-    const HANDLE_LEN = 50; // length of the handle bar
-    const HANDLE_THICK = 16; // thickness of the handle bar
-    const ROT_SPEED = 2.5;   // radians per second when pushed
+    const R = 30;            // housing radius (lamp center to wall centers)
+    const WALL_T = 8;        // wall thickness
+    const SEG_LEN = 24;      // wall segment length (chords overlap slightly)
+    const APERTURE = 40 * Math.PI / 180; // angular size of the opening
+    const NSEGS = 7;         // segments covering the rest of the ring
+    const ROT_SPEED = 2.5;   // radians per second while pushed
 
-    // Current rotation angle in radians (0 = opening faces right).
+    // Rendered center of the lamp.
+    const sx = lamp.scale ? lamp.scale.x : 1;
+    const sy = lamp.scale ? lamp.scale.y : 1;
+    const cx = lamp.pos.x + ((lamp.width || 32) * sx) / 2;
+    const cy = lamp.pos.y + ((lamp.height || 32) * sy) / 2;
+
+    // Current rotation in radians (0 = aperture faces east).
     let angle = 0;
 
-    const barColor = [40, 40, 60];
+    const span = ((Math.PI * 2) - APERTURE) / NSEGS;
+    const segments = [];
+    for (let i = 0; i < NSEGS; i++) {
+        const baseAngle = (APERTURE / 2) + (span * (i + 0.5));
+        const seg = k.add([
+            k.rect(SEG_LEN, WALL_T),
+            k.pos(cx + R * Math.cos(baseAngle), cy + R * Math.sin(baseAngle)),
+            k.anchor("center"),
+            k.color([40, 40, 60]),
+            k.rotate(0),
+            k.area(),
+            "interactable",
+            `${id}.seg${i}`,
+            `room:${room}`,
+            { interact: () => {} },
+        ]);
+        seg.baseAngle = baseAngle;
+        segments.push(seg);
+    }
 
-    // Three bars forming the C-shape. Each uses k.anchor("center") so pos is
-    // the center and rotation happens around the center. Each uses k.angle(deg)
-    // for rotation and has "interactable" so rooms.js auto-registers it as a
-    // shadow caster.
-    const topBar = k.add([
-        k.rect(R * 2, BAR),
-        k.pos(pos[0], pos[1] - R),
-        k.anchor("center"),
-        k.color(barColor),
-        k.rotate(0),
-        k.area(),
-        "interactable",
-        `director.top`,
-        `room:${room}`,
-        { interact: () => {} },
-    ]);
-    const leftBar = k.add([
-        k.rect(BAR, R * 2),
-        k.pos(pos[0] - R, pos[1]),
-        k.anchor("center"),
-        k.color(barColor),
-        k.rotate(0),
-        k.area(),
-        "interactable",
-        `director.left`,
-        `room:${room}`,
-        { interact: () => {} },
-    ]);
-    const bottomBar = k.add([
-        k.rect(R * 2, BAR),
-        k.pos(pos[0], pos[1] + R),
-        k.anchor("center"),
-        k.color(barColor),
-        k.rotate(0),
-        k.area(),
-        "interactable",
-        `director.bottom`,
-        `room:${room}`,
-        { interact: () => {} },
-    ]);
+    // Place every segment on the ring, tangential to it.
+    function place() {
+        for (const s of segments) {
+            const a = s.baseAngle + angle;
+            s.pos.x = cx + (R * Math.cos(a));
+            s.pos.y = cy + (R * Math.sin(a));
+            s.angle = ((a * 180) / Math.PI) + 90;
+        }
+    }
+    place();
 
-    // Handle bar on the back (left side at angle 0). The player pushes this
-    // to rotate the C. It has a static body so the player can collide with it.
-    const handle = k.add([
-        k.rect(HANDLE_LEN, HANDLE_THICK),
-        k.pos(pos[0] - R - HANDLE_LEN / 2, pos[1]),
-        k.anchor("center"),
-        k.color([100, 100, 140]),
-        k.rotate(0),
-        k.area(),
-        k.body({ isStatic: true }),
-        "interactable",
-        id,
-        `room:${room}`,
-        { interact: () => {} },
-    ]);
-
-    // Update bar and handle positions and rotations each frame.
-    k.onUpdate(() => {
-        if (topBar.destroyed) return;
-
-        // Check if the player is pushing the handle.
-        if (player && !player.destroyed && player.isColliding(handle)) {
-            // Compute the angle from the center to the player.
-            const dx = player.pos.x - pos[0];
-            const dy = player.pos.y - pos[1];
-            const playerAngle = Math.atan2(dy, dx);
-            // Rotate the C toward the player's angle.
+    const update = k.onUpdate(() => {
+        if (segments[0].destroyed) {
+            update.cancel(); // housing is gone; stop tracking it
+            return;
+        }
+        // Pushing: while the player overlaps any wall segment, spin the
+        // housing toward the player's position so the aperture follows them.
+        if (player && !player.destroyed && segments.some((s) => player.isColliding(s))) {
+            const playerAngle = Math.atan2(player.pos.y - cy, player.pos.x - cx);
             let diff = playerAngle - angle;
             while (diff > Math.PI) diff -= 2 * Math.PI;
             while (diff < -Math.PI) diff += 2 * Math.PI;
             const step = ROT_SPEED * k.dt();
-            if (Math.abs(diff) < step) {
-                angle = playerAngle;
-            } else {
-                angle += Math.sign(diff) * step;
-            }
+            angle = Math.abs(diff) < step ? playerAngle : angle + Math.sign(diff) * step;
+            place();
         }
-
-        // Convert angle to degrees for the k.angle component.
-        const deg = angle * 180 / Math.PI;
-
-        // Update bar positions (orbit around the light center) and rotations.
-        // Each bar's center orbits at radius R from the light, and the bar
-        // itself rotates by the same angle to maintain the C-shape.
-        // With k.anchor("center"), pos is the bar's center, so no offset needed.
-        const topAngle = -Math.PI / 2 + angle;
-        topBar.pos.x = pos[0] + R * Math.cos(topAngle);
-        topBar.pos.y = pos[1] + R * Math.sin(topAngle);
-        topBar.angle = deg;
-
-        const leftAngle = Math.PI + angle;
-        leftBar.pos.x = pos[0] + R * Math.cos(leftAngle);
-        leftBar.pos.y = pos[1] + R * Math.sin(leftAngle);
-        leftBar.angle = deg;
-
-        const bottomAngle = Math.PI / 2 + angle;
-        bottomBar.pos.x = pos[0] + R * Math.cos(bottomAngle);
-        bottomBar.pos.y = pos[1] + R * Math.sin(bottomAngle);
-        bottomBar.angle = deg;
-
-        // Update handle position (on the back, opposite the opening).
-        const handleAngle = angle + Math.PI;
-        handle.pos.x = pos[0] + (R + HANDLE_LEN / 2) * Math.cos(handleAngle);
-        handle.pos.y = pos[1] + (R + HANDLE_LEN / 2) * Math.sin(handleAngle);
-        handle.angle = deg;
     });
 
-    return [topBar, leftBar, bottomBar, handle];
+    return segments;
 }
 
 // Creates a stat-modifier object that toggles the player's speed.
