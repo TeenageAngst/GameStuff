@@ -1,7 +1,7 @@
 import { createPlayer } from './src/player.js';
 import { setupInteraction } from './src/interaction.js';
 import { createUI } from './src/ui.js';
-import { createNarrative, createLight, createStat, createLightDirector } from './src/objects.js';
+import { createNarrative, createLight, createStat, createLightDirector, createLightSwitch } from './src/objects.js';
 import { createBackground } from './src/background.js';
 import { createLighting } from './src/lighting.js';
 import { createRooms, ROOM_IDS } from './src/rooms.js';
@@ -42,6 +42,7 @@ k.onLoad(() => {
     window.createLight = (id, pos) => createLight(k, id, pos, lighting);
     window.createStat = (id, pos, player) => createStat(k, id, pos, player);
     window.createLightDirector = (id, lamp) => createLightDirector(k, id, lamp, lighting, player);
+    window.createLightSwitch = (id, pos, lamp) => createLightSwitch(k, id, pos, lamp);
 
     // Room manager: builds rooms from the data-driven registry and
     // handles door transitions.
