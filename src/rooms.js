@@ -1,4 +1,4 @@
-import { createNarrative, createLight, createStat } from './objects.js';
+import { createNarrative, createLight, createStat, createLightDirector } from './objects.js';
 import { TEXTS } from './texts.js';
 
 // Room manager: builds rooms from a data-driven registry, with fade transitions.
@@ -45,7 +45,7 @@ const ROOMS = {
     [ROOM_IDS.EMPTY]: {
         darkness: 0.7,
         build(k, ctx) {
-            const { W, H, createDoor, lighting } = ctx;
+            const { W, H, createDoor, lighting, player } = ctx;
             const objects = [];
             const WALL = 24;
             // Floor: a large, bright, clearly defined surface.
@@ -66,6 +66,12 @@ const ROOMS = {
             // of its own color; where the pools overlap the hues blend.
             objects.push(createLight(k, "empty.light.green", [W * 0.40, H * 0.45], lighting, [80, 255, 120]));
             objects.push(createLight(k, "empty.light.red", [W * 0.60, H * 0.45], lighting, [255, 70, 60]));
+            // A light director: a C-shaped occluder centered on the red lamp.
+            // The player pushes the handle to rotate the C, directing the beam
+            // (the opening) in different directions. Light only escapes through
+            // the gap, creating a sweeping spotlight effect.
+            const redLampPos = [W * 0.60, H * 0.45];
+            objects.push(...createLightDirector(k, "empty.director.main", redLampPos, lighting, player));
             // A door back to the main room.
             const door = createDoor("empty.door.north", [W / 2 - 24, WALL], ROOM_IDS.MAIN);
             objects.push(door, door.frame, door.handle);
@@ -149,7 +155,8 @@ export function createRooms(k, player, lighting, ui) {
         // and cast shadows. The light source itself is skipped (it emits, not
         // blocks).
         for (const obj of objects) {
-            if (obj.has && obj.has("interactable") && obj.lightOn === undefined) {
+            const hasInt = obj.tags && obj.tags.includes("interactable");
+            if (hasInt && obj.lightOn === undefined) {
                 lighting.registerShadowCaster(obj);
             }
         }
@@ -163,7 +170,7 @@ export function createRooms(k, player, lighting, ui) {
                 lighting.unregister(obj);
             }
             // Unregister shadow casters for the same reason.
-            if (obj.has && obj.has("interactable") && obj.lightOn === undefined) {
+            if (obj.tags && obj.tags.includes("interactable") && obj.lightOn === undefined) {
                 lighting.unregisterShadowCaster(obj);
             }
             obj.destroy();

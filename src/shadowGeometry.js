@@ -17,7 +17,7 @@
 
 export const SHADOW_MAX_DIST = 1200; // max distance a caster can be from a light to cast
 
-export function computeShadowPolygon(lx, ly, box, maxDist = SHADOW_MAX_DIST) {
+export function computeShadowPolygon(lx, ly, box, maxDist = SHADOW_MAX_DIST, angle = 0) {
     const left = box.x;
     const right = box.x + box.w;
     const top = box.y;
@@ -30,11 +30,26 @@ export function computeShadowPolygon(lx, ly, box, maxDist = SHADOW_MAX_DIST) {
     if (dist < 0.001 || dist > maxDist) return null;
     const D = { x: dx / dist, y: dy / dist }; // unit vector light -> box center
 
-    // The four box corners.
-    const TL = { x: left, y: top };
-    const TR = { x: right, y: top };
-    const BR = { x: right, y: bottom };
-    const BL = { x: left, y: bottom };
+    // Rotate a point (or vector) around the box center by `angle` (radians).
+    // When angle is 0 this is the identity, so axis-aligned boxes behave
+    // exactly as before.
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    function rotPt(p) {
+        const vx = p.x - bcx;
+        const vy = p.y - bcy;
+        return { x: bcx + vx * cos - vy * sin, y: bcy + vx * sin + vy * cos };
+    }
+    function rotVec(v) {
+        return { x: v.x * cos - v.y * sin, y: v.x * sin + v.y * cos };
+    }
+
+    // The four box corners (rotated around the box center if the box is
+    // rotated).
+    const TL = rotPt({ x: left, y: top });
+    const TR = rotPt({ x: right, y: top });
+    const BR = rotPt({ x: right, y: bottom });
+    const BL = rotPt({ x: left, y: bottom });
     const corners = [TL, TR, BR, BL];
 
     // Find the two tangent corners (min/max angle from the light). These are
@@ -60,10 +75,10 @@ export function computeShadowPolygon(lx, ly, box, maxDist = SHADOW_MAX_DIST) {
     // The box edges in order (clockwise): TL->TR (top), TR->BR (right),
     // BR->BL (bottom), BL->TL (left).
     const edges = [
-        { a: TL, b: TR, n: { x: 0, y: -1 } }, // top
-        { a: TR, b: BR, n: { x: 1, y: 0 } },  // right
-        { a: BR, b: BL, n: { x: 0, y: 1 } },  // bottom
-        { a: BL, b: TL, n: { x: -1, y: 0 } }, // left
+        { a: TL, b: TR, n: rotVec({ x: 0, y: -1 }) }, // top
+        { a: TR, b: BR, n: rotVec({ x: 1, y: 0 }) },  // right
+        { a: BR, b: BL, n: rotVec({ x: 0, y: 1 }) },  // bottom
+        { a: BL, b: TL, n: rotVec({ x: -1, y: 0 }) }, // left
     ];
 
     // Collect edges facing away from the light (dot > 0).

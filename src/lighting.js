@@ -131,7 +131,11 @@ export function createLighting(k) {
     // anchor("center") while most objects use the default top-left anchor.
     function casterBox(obj, margin) {
         let x, y, w, h;
-        if (obj.area && obj.area.pos) {
+        // For rotated objects, use the unrotated rectangle (from pos/width/
+        // height/anchor) so the shadow geometry can rotate it correctly.
+        // The `area` component's pos is the AABB of the rotated shape, which
+        // would be too large.
+        if (obj.area && obj.area.pos && !obj.angle) {
             // `area` is a world-space rect: .pos is its top-left corner.
             x = obj.area.pos.x;
             y = obj.area.pos.y;
@@ -157,6 +161,7 @@ export function createLighting(k) {
             y: y - margin,
             w: w + margin * 2,
             h: h + margin * 2,
+            angle: (obj.angle || 0) * Math.PI / 180,
         };
     }
 
@@ -165,7 +170,7 @@ export function createLighting(k) {
     // (unit-tested in tests/shadow.test.js). Returns { poly, nearDist,
     // farDist } or null if the caster is too far away to matter.
     function shadowPolygon(lx, ly, box) {
-        return computeShadowPolygon(lx, ly, box, SHADOW_MAX_DIST);
+        return computeShadowPolygon(lx, ly, box, SHADOW_MAX_DIST, box.angle || 0);
     }
     // Current darkness level (0 = fully lit, 1 = fully dark). Defaults to the
     // DARKNESS constant; rooms can override it via setDarkness().
