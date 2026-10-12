@@ -148,3 +148,49 @@ export function computeShadowPolygon(lx, ly, box, maxDist = SHADOW_MAX_DIST, ang
 
     return { poly, nearDist: Math.max(0, nearDist), farDist };
 }
+
+// Computes the shadow polygon for an annular sector (a ring segment) relative
+// to a point light. The sector is defined by its center (cx, cy), inner
+// radius rIn, outer radius rOut, and angular span [a0, a1] in radians (the
+// solid part of the ring; the aperture is the complementary gap).
+//
+// The shadow is the region behind the sector (away from the light) that the
+// light cannot reach. For a light at the sector's center (the common case for
+// a light director), the shadow is the angular wedge [a0, a1] extending from
+// rOut to maxDist. The polygon is a proper annular sector:
+//   - Near boundary: arc at rOut from a0 to a1 (counterclockwise).
+//   - Far boundary: arc at maxDist from a1 back to a0 (clockwise).
+// Both arcs are sampled at ARC_STEPS points for smoothness. The two radial
+// edges (at a0 and a1) are implicit in the polygon's lineTo connections.
+//
+// `sector` is { cx, cy, rIn, rOut, a0, a1 }.
+// Returns { poly, nearDist, farDist } or null if the sector is too far away.
+export function computeAnnularSectorShadow(lx, ly, sector, maxDist = SHADOW_MAX_DIST) {
+    const { cx, cy, rIn, rOut, a0, a1 } = sector;
+
+    const dx = cx - lx;
+    const dy = cy - ly;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > maxDist) return null;
+
+    const ARC_STEPS = 24;
+    const poly = [];
+
+    // Near boundary: arc at rOut from a0 to a1 (counterclockwise).
+    for (let i = 0; i <= ARC_STEPS; i++) {
+        const a = a0 + (a1 - a0) * (i / ARC_STEPS);
+        poly.push({ x: cx + rOut * Math.cos(a), y: cy + rOut * Math.sin(a) });
+    }
+
+    // Far boundary: arc at maxDist from a1 back to a0 (clockwise).
+    for (let i = 0; i <= ARC_STEPS; i++) {
+        const a = a1 - (a1 - a0) * (i / ARC_STEPS);
+        poly.push({ x: cx + maxDist * Math.cos(a), y: cy + maxDist * Math.sin(a) });
+    }
+
+    return {
+        poly,
+        nearDist: Math.max(0, dist - rOut),
+        farDist: dist + rOut,
+    };
+}

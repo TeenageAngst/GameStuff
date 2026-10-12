@@ -23,9 +23,11 @@ module.exports = {
     await page.waitForSelector('canvas');
 
     const results = await page.evaluate(async () => {
-      const { computeShadowPolygon, SHADOW_MAX_DIST } = await import(
-        '/src/shadowGeometry.js'
-      );
+      const {
+        computeShadowPolygon,
+        computeAnnularSectorShadow,
+        SHADOW_MAX_DIST,
+      } = await import('/src/shadowGeometry.js');
 
       // Ray-casting point-in-polygon test.
       function pointInPoly(px, py, poly) {
@@ -117,6 +119,68 @@ module.exports = {
         box
       );
 
+      // --- Annular sector (light director housing) ---
+      // A ring centered at the origin with a 40° aperture centered on the
+      // +x axis (solid part spans [20°, 340°]). The light sits at the ring's
+      // center, so the shadow must be exactly the solid wedge: points inside
+      // the solid arc are shadowed, points inside the aperture are not.
+      const sector = {
+        cx: 0,
+        cy: 0,
+        rIn: 26,
+        rOut: 34,
+        a0: (20 * Math.PI) / 180,
+        a1: (340 * Math.PI) / 180,
+      };
+      const sectorResult = computeAnnularSectorShadow(0, 0, sector);
+      const sectorPoly = sectorResult ? sectorResult.poly : null;
+
+      // Sample points at radius 60 (outside the ring) at key angles.
+      function sectorPointAt(deg) {
+        const rad = (deg * Math.PI) / 180;
+        return {
+          x: 60 * Math.cos(rad),
+          y: 60 * Math.sin(rad),
+        };
+      }
+      const solidAngles = [30, 90, 180, 270, 330]; // inside the solid arc
+      const apertureAngles = [0, 10, -10]; // inside the 40° aperture
+      const sectorSolidInside = solidAngles.map((d) => {
+        const p = sectorPointAt(d);
+        return pointInPoly(p.x, p.y, sectorPoly);
+      });
+      const sectorApertureInside = apertureAngles.map((d) => {
+        const p = sectorPointAt(d);
+        return pointInPoly(p.x, p.y, sectorPoly);
+      });
+
+      // Rotated sector: the same ring spun 90° (aperture now faces south).
+      const rotatedSector = {
+        ...sector,
+        a0: sector.a0 + Math.PI / 2,
+        a1: sector.a1 + Math.PI / 2,
+      };
+      const rotatedResult = computeAnnularSectorShadow(0, 0, rotatedSector);
+      const rotatedPoly = rotatedResult ? rotatedResult.poly : null;
+      // After a 90° rotation, the aperture (was at 0°) is at 90°.
+      const rotatedApertureInside = pointInPoly(
+        sectorPointAt(90).x,
+        sectorPointAt(90).y,
+        rotatedPoly
+      );
+      const rotatedSolidInside = pointInPoly(
+        sectorPointAt(180).x,
+        sectorPointAt(180).y,
+        rotatedPoly
+      );
+
+      // Beyond SHADOW_MAX_DIST: no shadow.
+      const sectorTooFar = computeAnnularSectorShadow(
+        SHADOW_MAX_DIST + 100,
+        0,
+        sector
+      );
+
       return {
         perAngle,
         axisAngles,
@@ -124,6 +188,12 @@ module.exports = {
         maxJump,
         meanArea,
         tooFar: tooFar === null ? null : 'non-null',
+        sectorPoly: sectorPoly ? sectorPoly.length : null,
+        sectorSolidInside,
+        sectorApertureInside,
+        rotatedApertureInside,
+        rotatedSolidInside,
+        sectorTooFar: sectorTooFar === null ? null : 'non-null',
       };
     });
 
@@ -185,6 +255,43 @@ module.exports = {
       fail('Caster beyond SHADOW_MAX_DIST should not cast a shadow');
     }
     console.log('PASS: Casters beyond SHADOW_MAX_DIST do not cast a shadow');
+
+    // --- 7: annular sector (light director) shadow is the exact solid wedge.
+    if (results.sectorPoly === null) {
+      fail('Annular sector produced no shadow polygon');
+    }
+    if (results.sectorSolidInside.some((inside) => !inside)) {
+      fail(
+        'Annular sector shadow does not cover the solid arc ' +
+          `(solid points inside: ${results.sectorSolidInside.join(',')})`
+      );
+    }
+    if (results.sectorApertureInside.some((inside) => inside)) {
+      fail(
+        'Annular sector shadow leaks through the aperture ' +
+          `(aperture points inside: ${results.sectorApertureInside.join(',')})`
+      );
+    }
+    console.log(
+      'PASS: Annular sector shadow covers the solid arc and leaves the aperture open'
+    );
+
+    // --- 8: rotating the sector rotates the shadow (aperture follows).
+    // After a +90° rotation the aperture (was at 0°) is at 90°, so a point
+    // at 90° must be OUTSIDE the shadow polygon (aperture is open).
+    if (results.rotatedApertureInside) {
+      fail('Rotated annular sector: aperture is blocked after 90° rotation');
+    }
+    if (!results.rotatedSolidInside) {
+      fail('Rotated annular sector: solid arc no longer shadowed after 90° rotation');
+    }
+    console.log('PASS: Rotating the annular sector rotates its shadow');
+
+    // --- 9: sector beyond SHADOW_MAX_DIST produces no shadow.
+    if (results.sectorTooFar !== null) {
+      fail('Annular sector beyond SHADOW_MAX_DIST should not cast a shadow');
+    }
+    console.log('PASS: Annular sectors beyond SHADOW_MAX_DIST do not cast a shadow');
 
     console.log('All shadow geometry tests passed');
   },

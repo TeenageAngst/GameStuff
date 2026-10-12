@@ -11,7 +11,7 @@
 // context. Instead we use a separate <canvas> positioned exactly over the
 // game canvas and redraw it every frame in k.onUpdate.
 
-import { computeShadowPolygon, SHADOW_MAX_DIST } from "./shadowGeometry.js";
+import { computeShadowPolygon, computeAnnularSectorShadow, SHADOW_MAX_DIST } from "./shadowGeometry.js";
 
 const DARKNESS = 0.65; // overlay opacity when no lights are on (default)
 const LIGHT_RADIUS = 220; // radius (px) of a light's illumination
@@ -239,8 +239,16 @@ export function createLighting(k) {
             tctx.filter = `blur(${SHADOW_SOFT}px)`;
             for (const caster of shadowCasters) {
                 if (caster.destroyed) continue;
-                const box = casterBox(caster, SHADOW_MARGIN);
-                const result = shadowPolygon(lx, ly, box);
+                let result;
+                if (caster.annularSector) {
+                    // Annular-sector caster (e.g. the light director's ring):
+                    // its shadow is the exact angular wedge of the solid part
+                    // of the ring, so no light leaks between pieces.
+                    result = computeAnnularSectorShadow(lx, ly, caster.annularSector, SHADOW_MAX_DIST);
+                } else {
+                    const box = casterBox(caster, SHADOW_MARGIN);
+                    result = shadowPolygon(lx, ly, box);
+                }
                 if (!result) continue;
                 const { poly, farDist } = result;
                 // Radial gradient centered on the light: fully opaque (full

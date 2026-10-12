@@ -118,23 +118,25 @@ export function createLightSwitch(k, id, pos, lamp) {
 // single aperture the light shines through. The player pushes the housing
 // itself to spin it, sweeping the beam around the room.
 //
-// The housing is a ring of thin wall segments (each its own shadow caster,
-// registered via the "interactable" tag, which rooms.js auto-registers),
-// with a 40-degree gap as the aperture. The segments use the `k.rotate(deg)`
-// component for rotation (entity property: obj.angle), and the shadow system
-// supports rotated boxes (see shadowGeometry.js).
+// The housing is a single annular-sector polygon (a ring with a gap),
+// rendered as one `k.polygon` entity and rotated as a whole. Its shadow is
+// computed by `computeAnnularSectorShadow` (shadowGeometry.js), which
+// produces the exact angular wedge of the solid part of the ring — so no
+// light leaks between pieces (the old 7-chord approach left ~2° gaps at
+// each joint). The entity carries the "interactable" tag so rooms.js
+// auto-registers it as a shadow caster; the `annularSector` property tells
+// the lighting system to use the sector geometry instead of a box.
 //
 // `lamp` is the light object returned by createLight. The housing is
 // centered on the lamp's rendered center (mirroring lightCenter in
 // lighting.js), not on its top-left pos.
 export function createLightDirector(k, id, lamp, lighting, player) {
     const room = id.split('.')[0];
-    const R = 30;            // housing radius (lamp center to wall centers)
-    const WALL_T = 8;        // wall thickness
-    const SEG_LEN = 24;      // wall segment length (chords overlap slightly)
+    const R_IN = 26;         // inner radius of the ring
+    const R_OUT = 34;        // outer radius of the ring
     const APERTURE = 40 * Math.PI / 180; // angular size of the opening
-    const NSEGS = 7;         // segments covering the rest of the ring
     const ROT_SPEED = 2.5;   // radians per second while pushed
+    const ARC_STEPS = 24;    // polygon samples per arc (smoothness)
 
     // Rendered center of the lamp.
     const sx = lamp.scale ? lamp.scale.x : 1;
@@ -145,45 +147,58 @@ export function createLightDirector(k, id, lamp, lighting, player) {
     // Current rotation in radians (0 = aperture faces east).
     let angle = 0;
 
-    const span = ((Math.PI * 2) - APERTURE) / NSEGS;
-    const segments = [];
-    for (let i = 0; i < NSEGS; i++) {
-        const baseAngle = (APERTURE / 2) + (span * (i + 0.5));
-        const seg = k.add([
-            k.rect(SEG_LEN, WALL_T),
-            k.pos(cx + R * Math.cos(baseAngle), cy + R * Math.sin(baseAngle)),
-            k.anchor("center"),
-            k.color([40, 40, 60]),
-            k.rotate(0),
-            k.area(),
-            "interactable",
-            `${id}.seg${i}`,
-            `room:${room}`,
-            { interact: () => {} },
-        ]);
-        seg.baseAngle = baseAngle;
-        segments.push(seg);
+    // Build the annular-sector polygon in local coordinates (centered on
+    // origin). The solid part spans [APERTURE/2, 2π - APERTURE/2]; the
+    // aperture is the gap centered on the +x axis.
+    const a0 = APERTURE / 2;
+    const a1 = Math.PI * 2 - APERTURE / 2;
+    const pts = [];
+    // Outer arc: a0 → a1.
+    for (let i = 0; i <= ARC_STEPS; i++) {
+        const a = a0 + (a1 - a0) * (i / ARC_STEPS);
+        pts.push(k.vec2(R_OUT * Math.cos(a), R_OUT * Math.sin(a)));
+    }
+    // Inner arc: a1 → a0 (reverse direction to close the ring).
+    for (let i = ARC_STEPS; i >= 0; i--) {
+        const a = a0 + (a1 - a0) * (i / ARC_STEPS);
+        pts.push(k.vec2(R_IN * Math.cos(a), R_IN * Math.sin(a)));
     }
 
-    // Place every segment on the ring, tangential to it.
+    const housing = k.add([
+        k.polygon(pts),
+        k.pos(cx, cy),
+        k.anchor("center"),
+        k.color([40, 40, 60]),
+        k.rotate(0),
+        k.area(),
+        "interactable",
+        id,
+        `room:${room}`,
+        { interact: () => {} },
+    ]);
+
+    // Tell the lighting system this caster is an annular sector, not a box.
+    // The sector's center is the lamp center; a0/a1 are the solid arc's
+    // bounds in world space (updated as the housing rotates).
+    housing.annularSector = { cx, cy, rIn: R_IN, rOut: R_OUT, a0, a1 };
+
+    // Rotate the housing and keep the annularSector's world-space angles in
+    // sync so the shadow geometry stays correct.
     function place() {
-        for (const s of segments) {
-            const a = s.baseAngle + angle;
-            s.pos.x = cx + (R * Math.cos(a));
-            s.pos.y = cy + (R * Math.sin(a));
-            s.angle = ((a * 180) / Math.PI) + 90;
-        }
+        housing.angle = (angle * 180) / Math.PI;
+        housing.annularSector.a0 = a0 + angle;
+        housing.annularSector.a1 = a1 + angle;
     }
     place();
 
     const update = k.onUpdate(() => {
-        if (segments[0].destroyed) {
+        if (housing.destroyed) {
             update.cancel(); // housing is gone; stop tracking it
             return;
         }
-        // Pushing: while the player overlaps any wall segment, spin the
-        // housing toward the player's position so the aperture follows them.
-        if (player && !player.destroyed && segments.some((s) => player.isColliding(s))) {
+        // Pushing: while the player overlaps the housing, spin it toward
+        // the player's position so the aperture follows them.
+        if (player && !player.destroyed && player.isColliding(housing)) {
             const playerAngle = Math.atan2(player.pos.y - cy, player.pos.x - cx);
             let diff = playerAngle - angle;
             while (diff > Math.PI) diff -= 2 * Math.PI;
@@ -194,7 +209,7 @@ export function createLightDirector(k, id, lamp, lighting, player) {
         }
     });
 
-    return segments;
+    return [housing];
 }
 
 // Creates a stat-modifier object that toggles the player's speed.
