@@ -244,7 +244,21 @@ export function createLighting(k) {
                     // Annular-sector caster (e.g. the light director's ring):
                     // its shadow is the exact angular wedge of the solid part
                     // of the ring, so no light leaks between pieces.
-                    result = computeAnnularSectorShadow(lx, ly, caster.annularSector, SHADOW_MAX_DIST);
+                    //
+                    // The ring only blocks the light that lives inside it (at
+                    // the ring's center). For other lights (e.g. the green
+                    // lamp 160px away), the ring is just a physical object in
+                    // the scene and should not cast a shadow — it doesn't
+                    // block their light.
+                    const sec = caster.annularSector;
+                    const distToCenter = Math.hypot(lx - sec.cx, ly - sec.cy);
+                    if (distToCenter < sec.rIn) {
+                        // Light is at the ring's center: use the exact wedge.
+                        result = computeAnnularSectorShadow(lx, ly, sec, SHADOW_MAX_DIST);
+                    } else {
+                        // Light is elsewhere: the ring doesn't block it.
+                        continue;
+                    }
                 } else {
                     const box = casterBox(caster, SHADOW_MARGIN);
                     result = shadowPolygon(lx, ly, box);
@@ -255,11 +269,19 @@ export function createLighting(k) {
                 // erase) at the object's far edge, fading to transparent at
                 // the edge of the light's radius. This makes the shadow
                 // soften with distance.
-                const fadeEnd = farDist + SHADOW_FADE * LIGHT_RADIUS;
+                //
+                // For annular-sector casters (the light director's ring), the
+                // shadow must fully block the light throughout the entire light
+                // radius — the ring is a solid barrier, not a soft occluder.
+                // Use LIGHT_RADIUS as the "far edge" so the gradient stays at
+                // full opacity across the whole illuminated area.
+                const isSector = !!(caster.annularSector);
+                const effectiveFarDist = isSector ? LIGHT_RADIUS : farDist;
+                const fadeEnd = effectiveFarDist + SHADOW_FADE * LIGHT_RADIUS;
                 const sgrad = tctx.createRadialGradient(lx, ly, 0, lx, ly, Math.max(fadeEnd, 1));
                 const peak = light.intensity;
                 sgrad.addColorStop(0, `rgba(0, 0, 0, ${peak})`);
-                sgrad.addColorStop(Math.min(1, farDist / fadeEnd), `rgba(0, 0, 0, ${peak})`);
+                sgrad.addColorStop(Math.min(1, effectiveFarDist / fadeEnd), `rgba(0, 0, 0, ${peak})`);
                 sgrad.addColorStop(1, "rgba(0, 0, 0, 0)");
                 tctx.fillStyle = sgrad;
                 tctx.beginPath();

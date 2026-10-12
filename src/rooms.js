@@ -69,6 +69,9 @@ const ROOMS = {
             // toggled directly — the wall switch beside the door owns it.
             const redLamp = createLight(k, "empty.light.red", [W * 0.60, H * 0.45], lighting, [255, 70, 60]);
             redLamp.directToggle = false;
+            // Render above the director housing (added later, so it would
+            // otherwise cover the lamp sprite).
+            redLamp.z = 1;
             objects.push(redLamp);
             // Wall switch for the red lamp, on the north wall by the door.
             objects.push(...createLightSwitch(k, "empty.switch.red", [W / 2 + 60, WALL / 2], redLamp));
