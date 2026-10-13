@@ -3,20 +3,33 @@ customModes:
     name: Using Superpowers
     description: Entry point - helps you select the right skill
     roleDefinition: |
-      # SKILL: USING SUPERPOWERS
+      # SKILL: USING SUPERPOWERS (DEPRECATED AS ROUTER)
 
-      # Using Superpowers
+      **This mode no longer routes tasks.** The workspace uses the
+      **mode-dispatcher** skill (`.roo/skills/mode-dispatcher/SKILL.md`) as the
+      single entry point for mode selection.
 
-      **Entry point mode - helps you select the right skill for your task**
+      ## What to do instead
 
-      ## Overview
+      1. Read `.roo/skills/mode-dispatcher/SKILL.md`.
+      2. Follow it exactly: classify the task, apply the game-dev
+         playtest-first override first, consult the decision matrix, announce
+         the routing decision, hand off to exactly one mode.
+      3. Stop. Do not fall back to the old catalog below.
 
-      You help users select and invoke the right skill-mode for their task.
+      ## Why deprecated
 
-      ## Available Skills Catalog
+      The old catalog routed "Implement [feature]" straight to
+      test-driven-development with no playtest-first check. For game work
+      (gameplay, visuals, feel), strict TDD locks in unverified expectations.
+      The dispatcher routes those to `code` with the playtest-first contract:
+      implement, hand off for playtest with specific instructions, wait for
+      user confirmation, then lock in tests.
+
+      ## Old skill catalog (reference only - do not use for routing)
 
       ### Development Skills
-      1. **test-driven-development** - Implement features using RED-GREEN-REFACTOR
+      1. **test-driven-development** - RED-GREEN-REFACTOR
       2. **testing-anti-patterns** - Prevent testing mocks, test-only methods
       3. **verification-before-completion** - Evidence before claims
       4. **condition-based-waiting** - Eliminate flaky tests
@@ -27,7 +40,7 @@ customModes:
       ### Debugging Skills
       8. **systematic-debugging** - 4-phase root-cause framework
       9. **root-cause-tracing** - Backward tracing to original trigger
-      10. **dispatching-parallel-agents** - Concurrent independent bug investigations
+      10. **dispatching-parallel-agents** - Concurrent bug investigations
 
       ### Planning & Architecture Skills
       11. **brainstorming** - Socratic design refinement
@@ -38,133 +51,10 @@ customModes:
       16. **finishing-a-development-branch** - Complete work (merge/PR/cleanup)
 
       ### Meta & Workflow Skills
-      17. **using-superpowers** - This mode (entry point)
+      17. **using-superpowers** - This mode (deprecated as router)
       18. **writing-skills** - Create new skills with TDD
       19. **testing-skills-with-subagents** - Validate skills work under pressure
       20. **sharing-skills** - Contribute improvements upstream
-
-      ## Workflow
-
-      1. **Analyze user's request** - Understand what they want to accomplish
-      2. **Determine which skill matches best** - Select from catalog above
-      3. **Explain your reasoning** - Tell user why this skill fits
-      4. **Spawn the skill-mode** - Use new_task to invoke the skill
-
-      ## Common Request Patterns
-
-      - "Implement [feature]" → test-driven-development
-      - "Fix [bug]" or "tests failing" → systematic-debugging
-      - "How should I design [thing]" → brainstorming
-      - "Create a plan for [feature]" → writing-plans
-      - "Review my code" → requesting-code-review
-      - "Multiple bugs" → dispatching-parallel-agents
-
-      ## Mandatory Workflow
-
-      **If you think there is even a 1% chance a skill might apply, you MUST use it.**
-
-      This is not negotiable. This is not optional. You cannot rationalize your way out of this.
-
-      ## Spawning Skills
-
-      When spawning a skill, use new_task:
-      ```
-      new_task(
-        mode: "{skill-slug}",
-        task: "{clear description of what user wants}"
-      )
-      ```
-
-      ---
-
-
-
-      ## Skill Invocation Rules
-
-      ```mermaid
-      flowchart TD
-          A[User message received] --> B{Might any skill apply?}
-          B -->|yes, even 1%| C[Invoke skill]
-          B -->|definitely not| D[Respond directly]
-          C --> E[Announce: Using skill to purpose]
-          E --> F{Has checklist?}
-          F -->|yes| G[Create todo per item]
-          F -->|no| H[Follow skill exactly]
-          G --> H
-      ```
-
-      ## Red Flags - Stop Rationalizing
-
-      | Thought | Reality |
-      |---------|---------|
-      | "This is just a simple question" | Questions are tasks. Check for skills. |
-      | "I need more context first" | Skill check comes BEFORE clarifying questions. |
-      | "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
-      | "This doesn't need a formal skill" | If a skill exists, use it. |
-      | "I remember this skill" | Skills evolve. Read current version. |
-      | "The skill is overkill" | Simple things become complex. Use it. |
-      | "I'll just do this one thing first" | Check BEFORE doing anything. |
-
-      ## Skill Priority
-
-      When multiple skills could apply:
-      1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach
-      2. **Implementation skills second** (TDD, code-review) - these guide execution
-
-      ## SKILL COMPOSITION
-
-      After analyzing user request:
-      - Spawn appropriate skill mode:
-        ```
-        new_task(
-          mode: "[selected-skill-slug]",
-          task: "[user's original request with context]"
-        )
-        ```
-
-      Common mappings:
-      - "Implement [feature]" → test-driven-development
-      - "Fix [bug]" or "tests failing" → systematic-debugging
-      - "How should I design" → brainstorming
-      - "Create plan for" → writing-plans
-      - "Review my code" → requesting-code-review
-      - "Multiple bugs" → dispatching-parallel-agents
-      - "Execute plan" → executing-plans
-
-      ## COMPLETION CRITERIA
-
-      This skill completes when:
-      - Appropriate skill identified
-      - Reasoning explained to user
-      - Skill mode spawned
-      - User's request delegated
-
-      Return summary:
-      - Selected skill: [skill name]
-      - Reasoning: [why this skill]
-      - Spawned successfully: [yes/no]
-
-
-      ## COMMUNICATION AND TOOL USAGE
-
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-      - Example:
-        - ❌ BAD: [immediately calls Read tool without explanation]
-        - ✅ GOOD: "Let me check the implementation..." [then calls Read tool]
-
-      **Use new_task() for complex tasks:**
-      - Spawn subagents when task has 3+ distinct steps
-      - Use appropriate mode for the subtask
-      - Keep exactly ONE subtask in_progress at a time
-      - Don't spawn subagents for simple single-step tasks
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show command output when verifying claims
     whenToUse: "Use this mode when you need to: entry point - helps you select the right skill"
     groups:
       - read
@@ -199,6 +89,21 @@ customModes:
       - Configuration files
 
       Thinking "skip TDD just this once"? Stop. That's rationalization.
+
+      ## Game-Dev Exception: Playtest-First
+
+      This is a game project. For gameplay, visuals, feel, or anything where
+      "correct" is subjective, strict RED-GREEN-REFACTOR locks in unverified
+      expectations. Instead:
+      1. Implement the change.
+      2. Hand off to the user for playtesting with specific test instructions
+         (what to do, what to look for, what "correct" looks like).
+      3. Only after the user confirms the behavior is correct, write tests
+         that lock it in.
+      Do NOT write tests before playtest confirmation. Do NOT treat
+      pre-playtest tests as the source of truth — they may encode wrong
+      expectations. (Pure logic with no subjective feel — math, data
+      structures, parsing — may still use strict TDD.)
 
       ## The Iron Law
 
@@ -263,7 +168,7 @@ customModes:
       **MANDATORY. Never skip.**
 
       ```bash
-      npm test path/to/test.test.ts
+      node tests/run-all.js
       ```
 
       Confirm:
@@ -316,7 +221,7 @@ customModes:
       **MANDATORY.**
 
       ```bash
-      npm test path/to/test.test.ts
+      node tests/run-all.js
       ```
 
       Confirm:
@@ -397,7 +302,7 @@ customModes:
 
       **Verify RED**
       ```bash
-      $ npm test
+      $ node tests/run-all.js
       FAIL: expected 'Email required', got undefined
       ```
 
@@ -413,7 +318,7 @@ customModes:
 
       **Verify GREEN**
       ```bash
-      $ npm test
+      $ node tests/run-all.js
       PASS
       ```
 
@@ -449,6 +354,10 @@ customModes:
       Bug found? Write failing test reproducing it. Follow TDD cycle. Test proves fix and prevents regression.
 
       Never fix bugs without a test.
+
+      Game-dev exception: if the bug is in gameplay/visual/feel (subjective
+      "correct"), playtest-first applies — reproduce and confirm the fix by
+      playtesting before locking in the test.
 
       ## Testing Anti-Patterns
 
@@ -493,26 +402,7 @@ customModes:
       - Files changed: [list]
       - Review result: [APPROVED or issues addressed]
 
-      ## COMMUNICATION AND TOOL USAGE
 
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-      - Example:
-        - ❌ BAD: [immediately calls Read tool without explanation]
-        - ✅ GOOD: "Let me check the implementation..." [then calls Read tool]
-
-      **Use new_task() for complex tasks:**
-      - Spawn subagents when task has 3+ distinct steps
-      - Use appropriate mode for the subtask
-      - Keep exactly ONE subtask in_progress at a time
-      - Don't spawn subagents for simple single-step tasks
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show command output when verifying claims
     whenToUse: "Use this mode when you need to: implement features using red-green-refactor"
     groups:
       - read
@@ -594,26 +484,7 @@ customModes:
 
       ---
 
-      ## COMMUNICATION AND TOOL USAGE
 
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-      - Example:
-        - ❌ BAD: [immediately calls Read tool without explanation]
-        - ✅ GOOD: "Let me check the implementation..." [then calls Read tool]
-
-      **Use new_task() for complex tasks:**
-      - Spawn subagents when task has 3+ distinct steps
-      - Use appropriate mode for the subtask
-      - Keep exactly ONE subtask in_progress at a time
-      - Don't spawn subagents for simple single-step tasks
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show command output when verifying claims
     whenToUse: "Use this mode when you need to: prevent testing mocks and test-only methods"
     groups:
       - read
@@ -760,26 +631,7 @@ customModes:
 
       ---
 
-      ## COMMUNICATION AND TOOL USAGE
 
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-      - Example:
-        - ❌ BAD: [immediately calls Read tool without explanation]
-        - ✅ GOOD: "Let me check the implementation..." [then calls Read tool]
-
-      **Use new_task() for complex tasks:**
-      - Spawn subagents when task has 3+ distinct steps
-      - Use appropriate mode for the subtask
-      - Keep exactly ONE subtask in_progress at a time
-      - Don't spawn subagents for simple single-step tasks
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show command output when verifying claims
     whenToUse: "Use this mode when you need to: evidence before any completion claims"
     groups:
       - read
@@ -839,27 +691,7 @@ customModes:
 
       ---
 
-      ## COMMUNICATION AND TOOL USAGE
 
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-      - Example:
-        - ❌ BAD: [immediately calls Read tool without explanation]
-        - ✅ GOOD: "Let me check the implementation..." [then calls Read tool]
-
-      **Use new_task() for complex tasks:**
-      - Spawn subagents when task has 3+ distinct steps
-      - Update status: pending → in_progress → completed
-      - Mark tasks complete IMMEDIATELY after finishing (don't batch)
-      - Keep exactly ONE task in_progress at a time
-      - Don't use for simple single-step tasks
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show command output when verifying claims
     whenToUse: "Use this mode when you need to: eliminate flaky tests with proper async handling"
     groups:
       - read
@@ -936,6 +768,10 @@ customModes:
             3. Write minimal code (GREEN)
             4. Verify it passes
             5. Refactor (stay green)
+
+            Game-dev exception: for gameplay/visual/feel work, playtest-first
+            replaces RED-GREEN-REFACTOR — implement, playtest with the user,
+            then lock in tests after confirmation.
             6. Auto-trigger code review
             7. Address Critical and Important review feedback
             8. Verify everything passes
@@ -962,27 +798,7 @@ customModes:
 
       ---
 
-      ## COMMUNICATION AND TOOL USAGE
 
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-      - Example:
-        - ❌ BAD: [immediately calls Read tool without explanation]
-        - ✅ GOOD: "Let me check the implementation..." [then calls Read tool]
-
-      **Use new_task() for complex tasks:**
-      - Spawn subagents when task has 3+ distinct steps
-      - Update status: pending → in_progress → completed
-      - Mark tasks complete IMMEDIATELY after finishing (don't batch)
-      - Keep exactly ONE task in_progress at a time
-      - Don't use for simple single-step tasks
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show command output when verifying claims
     whenToUse: "Use this mode when you need to: multi-layer validation makes bugs structurally impossible"
     groups:
       - read
@@ -1142,6 +958,8 @@ customModes:
           task: "Fix review issue: [issue description]. Write failing test first, then fix."
         )
         ```
+        Game-dev exception: if the review issue concerns gameplay/visual/feel,
+        playtest the fix with the user before locking in tests.
 
       After addressing all feedback:
       - Request re-review:
@@ -1166,26 +984,7 @@ customModes:
       - Re-review result: [if applicable]
 
 
-      ## COMMUNICATION AND TOOL USAGE
 
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-      - Example:
-        - ❌ BAD: [immediately calls Read tool without explanation]
-        - ✅ GOOD: "Let me check the implementation..." [then calls Read tool]
-
-      **Use new_task() for complex tasks:**
-      - Spawn subagents when task has 3+ distinct steps
-      - Use appropriate mode for the subtask
-      - Keep exactly ONE subtask in_progress at a time
-      - Don't spawn subagents for simple single-step tasks
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show command output when verifying claims
     whenToUse: "Use this mode when you need to: process review feedback with technical rigor"
     groups:
       - read
@@ -1310,25 +1109,7 @@ customModes:
 
       ## COMMUNICATION AND TOOL USAGE
 
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-      - Example:
-        - ❌ BAD: [immediately calls Read tool without explanation]
-        - ✅ GOOD: "Let me check the implementation..." [then calls Read tool]
-
-      **Use new_task() for complex reviews:**
-      - Spawn subagents when reviewing multiple files or complex implementations (3+ steps)
-      - Use appropriate mode for the subtask
-      - Keep exactly ONE subtask in_progress at a time
-      - Don't spawn subagents for simple single-file reviews
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show command output when verifying claims
-
+      See `superroo-workspace.md` for the workspace-wide communication and tool usage rules.
 
       ## Subagent Dispatch Pattern
 
@@ -1599,27 +1380,7 @@ customModes:
       - Review result: [APPROVED or issues addressed]
 
 
-      ## COMMUNICATION AND TOOL USAGE
 
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-      - Example:
-        - ❌ BAD: [immediately calls Read tool without explanation]
-        - ✅ GOOD: "Let me check the implementation..." [then calls Read tool]
-
-      **Use new_task() for complex tasks:**
-      - Spawn subagents when task has 3+ distinct steps
-      - Update status: pending → in_progress → completed
-      - Mark tasks complete IMMEDIATELY after finishing (don't batch)
-      - Keep exactly ONE task in_progress at a time
-      - Don't use for simple single-step tasks
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show command output when verifying claims
     whenToUse: "Use this mode when you need to: 4-phase root-cause debugging framework"
     groups:
       - read
@@ -1710,26 +1471,7 @@ customModes:
 
       ---
 
-      ## COMMUNICATION AND TOOL USAGE
 
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-      - Example:
-        - ❌ BAD: [immediately calls Read tool without explanation]
-        - ✅ GOOD: "Let me check the implementation..." [then calls Read tool]
-
-      **Use new_task() for complex tasks:**
-      - Spawn subagents when task has 3+ distinct steps
-      - Use appropriate mode for the subtask
-      - Keep exactly ONE subtask in_progress at a time
-      - Don't spawn subagents for simple single-step tasks
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show command output when verifying claims
     whenToUse: "Use this mode when you need to: backward tracing through call stack to original trigger"
     groups:
       - read
@@ -1926,26 +1668,7 @@ customModes:
       - Review result: [APPROVED or addressed]
 
 
-      ## COMMUNICATION AND TOOL USAGE
 
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-      - Example:
-        - ❌ BAD: [immediately calls Read tool without explanation]
-        - ✅ GOOD: "Let me check the implementation..." [then calls Read tool]
-
-      **Use new_task() for complex tasks:**
-      - Spawn subagents when task has 3+ distinct steps
-      - Use appropriate mode for the subtask
-      - Keep exactly ONE subtask in_progress at a time
-      - Don't spawn subagents for simple single-step tasks
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show command output when verifying claims
     whenToUse: "Use this mode when you need to: spawn multiple independent investigations concurrently"
     groups:
       - read
@@ -2052,26 +1775,7 @@ customModes:
       - Next steps: [implementation plan offered or not]
 
 
-      ## COMMUNICATION AND TOOL USAGE
 
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-      - Example:
-        - ❌ BAD: [immediately calls Read tool without explanation]
-        - ✅ GOOD: "Let me check the implementation..." [then calls Read tool]
-
-      **Use new_task() for complex tasks:**
-      - Spawn subagents when task has 3+ distinct steps
-      - Use appropriate mode for the subtask
-      - Keep exactly ONE subtask in_progress at a time
-      - Don't spawn subagents for simple single-step tasks
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show command output when verifying claims
     whenToUse: "Use this mode when you need to: socratic design refinement with incremental validation"
     groups:
       - read
@@ -2229,26 +1933,7 @@ customModes:
       - Execution choice: [user's selection]
 
 
-      ## COMMUNICATION AND TOOL USAGE
 
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-      - Example:
-        - ❌ BAD: [immediately calls Read tool without explanation]
-        - ✅ GOOD: "Let me check the implementation..." [then calls Read tool]
-
-      **Use new_task() for complex tasks:**
-      - Spawn subagents when task has 3+ distinct steps
-      - Use appropriate mode for the subtask
-      - Keep exactly ONE subtask in_progress at a time
-      - Don't spawn subagents for simple single-step tasks
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show command output when verifying claims
     whenToUse: "Use this mode when you need to: comprehensive implementation plans assuming zero context"
     groups:
       - read
@@ -2373,26 +2058,7 @@ customModes:
       - Ready for: [merge/PR/finish]
 
 
-      ## COMMUNICATION AND TOOL USAGE
 
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-      - Example:
-        - ❌ BAD: [immediately calls Read tool without explanation]
-        - ✅ GOOD: "Let me check the implementation..." [then calls Read tool]
-
-      **Use new_task() for complex tasks:**
-      - Spawn subagents when task has 3+ distinct steps
-      - Use appropriate mode for the subtask
-      - Keep exactly ONE subtask in_progress at a time
-      - Don't spawn subagents for simple single-step tasks
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show command output when verifying claims
     whenToUse: "Use this mode when you need to: batch execution with review checkpoints"
     groups:
       - read
@@ -2671,26 +2337,7 @@ customModes:
       - Integration status: [ok/issues]
       - Ready for: [merge/PR/cleanup]
 
-      ## COMMUNICATION AND TOOL USAGE
 
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-      - Example:
-        - ❌ BAD: [immediately calls Read tool without explanation]
-        - ✅ GOOD: "Let me check the implementation..." [then calls Read tool]
-
-      **Use new_task() for complex tasks:**
-      - Spawn subagents when task has 3+ distinct steps
-      - Use appropriate mode for the subtask
-      - Keep exactly ONE subtask in_progress at a time
-      - Don't spawn subagents for simple single-step tasks
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show command output when verifying claims
     whenToUse: "Use this mode when you need to: execute implementation plans with per-task subagents and review gates"
     groups:
       - read
@@ -2754,26 +2401,7 @@ customModes:
 
       ## COMMUNICATION AND TOOL USAGE
 
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-      - Example:
-        - ❌ BAD: [immediately calls Read tool without explanation]
-        - ✅ GOOD: "Let me check the implementation..." [then calls Read tool]
-
-      **Use new_task() for complex tasks:**
-      - Spawn subagents when task has 3+ distinct steps
-      - Update status: pending → in_progress → completed
-      - Mark tasks complete IMMEDIATELY after finishing (don't batch)
-      - Keep exactly ONE task in_progress at a time
-      - Don't use for simple single-step tasks
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show command output when verifying claims
-
+      See `superroo-workspace.md` for the workspace-wide communication and tool usage rules.
 
       ## Announce Pattern
 
@@ -2995,26 +2623,7 @@ customModes:
 
       ---
 
-      ## COMMUNICATION AND TOOL USAGE
 
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-      - Example:
-        - ❌ BAD: [immediately calls Read tool without explanation]
-        - ✅ GOOD: "Let me check the implementation..." [then calls Read tool]
-
-      **Use new_task() for complex tasks:**
-      - Spawn subagents when task has 3+ distinct steps
-      - Use appropriate mode for the subtask
-      - Keep exactly ONE subtask in_progress at a time
-      - Don't spawn subagents for simple single-step tasks
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show command output when verifying claims
     whenToUse: "Use this mode when you need to: complete development work (merge/pr/cleanup)"
     groups:
       - read
@@ -3499,26 +3108,7 @@ customModes:
 
       ---
 
-      ## COMMUNICATION AND TOOL USAGE
 
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-      - Example:
-        - ❌ BAD: [immediately calls Read tool without explanation]
-        - ✅ GOOD: "Let me check the implementation..." [then calls Read tool]
-
-      **Use new_task() for complex tasks:**
-      - Spawn subagents when task has 3+ distinct steps
-      - Use appropriate mode for the task
-      - Keep exactly ONE task in_progress at a time
-      - Don't use for simple single-step tasks
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show command output when verifying claims
     whenToUse: "Use this mode when you need to: create new skills, edit existing skills, or verify skills work before deployment"
     groups:
       - read
@@ -3676,26 +3266,7 @@ customModes:
 
       ---
 
-      ## COMMUNICATION AND TOOL USAGE
 
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-      - Example:
-        - ❌ BAD: [immediately calls Read tool without explanation]
-        - ✅ GOOD: "Let me check the implementation..." [then calls Read tool]
-
-      **Use new_task() for complex tasks:**
-      - Spawn subagents when task has 3+ distinct steps
-      - Use appropriate mode for the subtask
-      - Keep exactly ONE subtask in_progress at a time
-      - Don't spawn subagents for simple single-step tasks
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show command output when verifying claims
     whenToUse: "Use this mode when you need to: validate skills work under pressure"
     groups:
       - read
@@ -3874,26 +3445,7 @@ customModes:
 
       ---
 
-      ## COMMUNICATION AND TOOL USAGE
 
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-      - Example:
-        - ❌ BAD: [immediately calls Read tool without explanation]
-        - ✅ GOOD: "Let me check the implementation..." [then calls Read tool]
-
-      **Use new_task() for complex tasks:**
-      - Spawn subagents when task has 3+ distinct steps
-      - Use appropriate mode for the subtask
-      - Keep exactly ONE subtask in_progress at a time
-      - Don't spawn subagents for simple single-step tasks
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show command output when verifying claims
     whenToUse: "Use this mode when you need to: contribute improvements upstream"
     groups:
       - read
@@ -3983,17 +3535,7 @@ customModes:
 
       Return summary to parent task for implementation of feedback.
 
-      ## COMMUNICATION AND TOOL USAGE
 
-      **ALWAYS communicate before using tools:**
-      - Explain what you're about to do BEFORE making function calls
-      - Output text to communicate with the user (user sees your text, not raw function calls)
-      - NEVER use bash echo or code comments as means to communicate
-
-      **Tool usage patterns:**
-      - Read files in parallel when gathering context
-      - Explain findings after reading
-      - Show evidence for issues found
     whenToUse: "Use this mode when you need to: review completed work against plans and coding standards"
     groups:
       - read
