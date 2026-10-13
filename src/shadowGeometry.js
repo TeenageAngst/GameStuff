@@ -208,14 +208,109 @@ export function computeAnnularSectorShadow(lx, ly, sector, maxDist = SHADOW_MAX_
     // is only valid for a light at the sector's center. From outside, the ring
     // is a solid occluder — its interior sits behind its walls, so the shadow
     // must cover the interior too, not just the region behind the ring.
-    // Compute the tangent-ray shadow of the outer circle: near arc facing the
-    // light, tangent rays extended to maxDist, far arc closing the cone. This
-    // covers the disc (including the interior) plus the shadow behind it.
+    //
+    // However, the aperture (gap) lets light through: if the aperture faces
+    // the light, a shaft of light passes through the gap into the interior.
+    // The shadow polygon gets a notch excluding this shaft.
+    //
+    // a0/a1 are the SOLID arc's bounds; the aperture is [a1, a0 + 2π].
     const dirToLight = Math.atan2(ly - cy, lx - cx); // center -> light
     const halfAngle = Math.acos(Math.min(1, rOut / dist));
     const t1 = dirToLight - halfAngle;
     const t2 = dirToLight + halfAngle;
 
+    // Aperture interval, normalized to be near dirToLight.
+    let ap0 = a1, ap1 = a0 + 2 * Math.PI;
+    while (ap0 < dirToLight - Math.PI) { ap0 += 2 * Math.PI; ap1 += 2 * Math.PI; }
+    while (ap0 > dirToLight + Math.PI) { ap0 -= 2 * Math.PI; ap1 -= 2 * Math.PI; }
+    // Overlap of aperture with the near arc (facing the light).
+    const ov0 = Math.max(ap0, t1), ov1 = Math.min(ap1, t2);
+    const apertureFacesLight = ov0 < ov1;
+
+    // Helper: project a point away from the light to maxDist.
+    function projectOut(px, py) {
+        const dx = px - lx, dy = py - ly;
+        const d = Math.hypot(dx, dy) || 1;
+        return { x: lx + (dx * maxDist) / d, y: ly + (dy * maxDist) / d };
+    }
+
+    // Helper: far intersection of ray (from lx,ly through px,py) with the
+    // inner circle. Returns null if the ray misses.
+    function rayInnerFar(px, py) {
+        const dx = px - lx, dy = py - ly;
+        const d = Math.hypot(dx, dy) || 1;
+        const Dx = dx / d, Dy = dy / d;
+        const Wx = lx - cx, Wy = ly - cy;
+        const b = Wx * Dx + Wy * Dy;
+        const c = Wx * Wx + Wy * Wy - rIn * rIn;
+        const disc = b * b - c;
+        if (disc < 0) return null;
+        const t = -b + Math.sqrt(disc); // far intersection
+        if (t <= 0) return null;
+        return { x: lx + Dx * t, y: ly + Dy * t };
+    }
+
+    if (apertureFacesLight) {
+        // Notched shadow: the near boundary follows the outer arc, dips in
+        // through the aperture along the light rays, crosses the interior at
+        // the far inner edge, and comes back out. The notch (light shaft)
+        // stays unshadowed.
+        const c0 = ov0, c1 = ov1;
+        const PA = { x: cx + rOut * Math.cos(c0), y: cy + rOut * Math.sin(c0) };
+        const PB = { x: cx + rOut * Math.cos(c1), y: cy + rOut * Math.sin(c1) };
+        const PAfar = rayInnerFar(PA.x, PA.y);
+        const PBfar = rayInnerFar(PB.x, PB.y);
+        if (PAfar && PBfar) {
+            // Outer arc from t1 to c0.
+            for (let i = 0; i <= ARC_STEPS; i++) {
+                const a = t1 + (c0 - t1) * (i / ARC_STEPS);
+                poly.push({ x: cx + rOut * Math.cos(a), y: cy + rOut * Math.sin(a) });
+            }
+            // In through the aperture along the ray to the far inner edge.
+            poly.push(PAfar);
+            // Across the far inner edge (short way).
+            const fa0 = Math.atan2(PAfar.y - cy, PAfar.x - cx);
+            const fa1 = Math.atan2(PBfar.y - cy, PBfar.x - cx);
+            let fdiff = fa1 - fa0;
+            while (fdiff <= -Math.PI) fdiff += 2 * Math.PI;
+            while (fdiff > Math.PI) fdiff -= 2 * Math.PI;
+            for (let i = 1; i <= ARC_STEPS; i++) {
+                const a = fa0 + fdiff * (i / ARC_STEPS);
+                poly.push({ x: cx + rIn * Math.cos(a), y: cy + rIn * Math.sin(a) });
+            }
+            // Back out through the aperture.
+            poly.push(PB);
+            // Outer arc from c1 to t2.
+            for (let i = 1; i <= ARC_STEPS; i++) {
+                const a = c1 + (t2 - c1) * (i / ARC_STEPS);
+                poly.push({ x: cx + rOut * Math.cos(a), y: cy + rOut * Math.sin(a) });
+            }
+            // Tangent rays and far arc (as in the plain disc shadow).
+            const tp1 = { x: cx + rOut * Math.cos(t1), y: cy + rOut * Math.sin(t1) };
+            const tp2 = { x: cx + rOut * Math.cos(t2), y: cy + rOut * Math.sin(t2) };
+            const fp2 = projectOut(tp2.x, tp2.y);
+            poly.push(fp2);
+            const fp1 = projectOut(tp1.x, tp1.y);
+            const f1 = Math.atan2(fp2.y - ly, fp2.x - lx);
+            const f2 = Math.atan2(fp1.y - ly, fp1.x - lx);
+            let diff = f2 - f1;
+            while (diff <= -Math.PI) diff += 2 * Math.PI;
+            while (diff > Math.PI) diff -= 2 * Math.PI;
+            for (let i = 0; i <= ARC_STEPS; i++) {
+                const a = f1 + diff * (i / ARC_STEPS);
+                poly.push({ x: lx + maxDist * Math.cos(a), y: ly + maxDist * Math.sin(a) });
+            }
+            poly.push(fp1);
+            return {
+                poly,
+                nearDist: Math.max(0, dist - rOut),
+                farDist: dist + rOut,
+            };
+        }
+        // If the ray math fails (grazing angle), fall through to plain disc.
+    }
+
+    // Plain disc shadow: tangent-ray shadow of the outer circle.
     // Near arc at rOut from t1 to t2 (facing the light).
     for (let i = 0; i <= ARC_STEPS; i++) {
         const a = t1 + (t2 - t1) * (i / ARC_STEPS);
@@ -224,11 +319,6 @@ export function computeAnnularSectorShadow(lx, ly, sector, maxDist = SHADOW_MAX_
 
     const tp1 = { x: cx + rOut * Math.cos(t1), y: cy + rOut * Math.sin(t1) };
     const tp2 = { x: cx + rOut * Math.cos(t2), y: cy + rOut * Math.sin(t2) };
-    function projectOut(px, py) {
-        const dx = px - lx, dy = py - ly;
-        const d = Math.hypot(dx, dy) || 1;
-        return { x: lx + (dx * maxDist) / d, y: ly + (dy * maxDist) / d };
-    }
     const fp2 = projectOut(tp2.x, tp2.y);
     poly.push(fp2);
 

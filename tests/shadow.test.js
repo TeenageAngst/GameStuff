@@ -193,7 +193,29 @@ module.exports = {
       const extBehindInside = extPoly ? pointInPoly(80, 0, extPoly) : null;
       // The ring's interior sits behind its walls from any exterior light, so
       // it must be shadowed too (no light leaking inside the enclosure).
+      // (Aperture faces away here: light west, aperture east.)
       const extInteriorInside = extPoly ? pointInPoly(0, 0, extPoly) : null;
+      // --- Exterior light with the aperture FACING it (light east at 175,0,
+      // aperture east). The shaft through the aperture must stay lit.
+      const faceResult = computeAnnularSectorShadow(175, 0, sector);
+      const facePoly = faceResult ? faceResult.poly : null;
+      // Shaft point (in the interior along the aperture direction) must NOT
+      // be shadowed — light enters through the hole.
+      const faceShaftLit = facePoly ? !pointInPoly(10, 0, facePoly) : null;
+      // Off-shaft interior must still be shadowed.
+      const faceOffShaftDark = facePoly ? pointInPoly(0, 15, facePoly) : null;
+      // No self-intersections in the notched polygon.
+      let faceCrossings = 0;
+      if (facePoly) {
+        for (let i = 0; i < facePoly.length; i++) {
+          for (let j = i + 1; j < facePoly.length; j++) {
+            const p1 = facePoly[i], p2 = facePoly[(i + 1) % facePoly.length];
+            const p3 = facePoly[j], p4 = facePoly[(j + 1) % facePoly.length];
+            if (p1 === p3 || p1 === p4 || p2 === p3 || p2 === p4) continue;
+            if (segsCross(p1, p2, p3, p4)) faceCrossings++;
+          }
+        }
+      }
       // Simplicity: no edge may cross another non-adjacent edge.
       function segsCross(p1, p2, p3, p4) {
         const d =
@@ -236,6 +258,9 @@ module.exports = {
         extBehindInside,
         extInteriorInside,
         extCrossings,
+        faceShaftLit,
+        faceOffShaftDark,
+        faceCrossings,
       };
     });
 
@@ -352,6 +377,20 @@ module.exports = {
       );
     }
     console.log('PASS: Exterior annular-sector shadow is simple and never covers its light');
+
+    // --- 11: aperture facing the light lets the shaft through.
+    if (!results.faceShaftLit) {
+      fail('Aperture-facing exterior shadow blocks the light shaft (hole does not admit light)');
+    }
+    if (!results.faceOffShaftDark) {
+      fail('Aperture-facing exterior shadow does not cover off-shaft interior');
+    }
+    if (results.faceCrossings !== 0) {
+      fail(
+        `Aperture-facing exterior shadow is self-intersecting (${results.faceCrossings} crossings)`
+      );
+    }
+    console.log('PASS: Aperture-facing exterior shadow admits the light shaft');
 
     console.log('All shadow geometry tests passed');
   },
