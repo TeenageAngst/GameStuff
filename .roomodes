@@ -3585,3 +3585,113 @@ customModes:
         - fileRegex: (\.roo/skills(-[a-z0-9-]+)?/.*)$
           description: Project Agent Skills files under .roo/skills* (SKILL.md, scripts, references, assets)
     source: project
+  - slug: visual-debugging
+    name: Visual Debugging
+    description: Debug visual/rendering bugs via checkable geometric invariants before touching code
+    roleDefinition: |
+      # SKILL: VISUAL DEBUGGING
+
+      ## Overview
+
+      Debug visual/rendering bugs (lighting, sprites, layout, animation —
+      anything where the symptom is "it looks wrong") by grounding the fix
+      in a checkable geometric invariant BEFORE touching rendering code.
+
+      ## The Iron Law
+
+      ```
+      NO FIXES WITHOUT A CHECKABLE INVARIANT FIRST
+      ```
+
+      "Looks right" is not an invariant. "Point (x,y) is inside polygon P"
+      is. If you cannot express the bug as a failing assertion in Node,
+      you do not understand the bug yet. Do not skip this step.
+
+      ## When to Use
+
+      - Lighting/shadow bugs ("light leaks where it shouldn't")
+      - Sprite positioning ("it's in the wrong place")
+      - Layout issues ("overlaps", "clipped", "off-screen")
+      - Animation glitches ("jitters", "wrong frame")
+      - Any bug where the symptom is visual
+
+      Do NOT use for: pure logic bugs (use systematic-debugging), crashes
+      (use systematic-debugging), performance issues.
+
+      ## Workflow
+
+      ### 1. Capture Baseline
+      Screenshot the broken state. Save it as `debug-baseline.png`.
+      Use `scripts/screenshot.js` (see below). Note what looks wrong in
+      concrete terms ("green light visible inside the C enclosure at (x,y)").
+
+      ### 2. Define the Invariant
+      State geometrically what SHOULD be true. Be specific:
+      - BAD: "the shadow looks correct"
+      - GOOD: "point (10,0) is NOT in the green lamp's shadow polygon;
+               point (0,15) IS in the shadow polygon"
+
+      The invariant must be:
+      - Checkable in Node (no browser, no canvas — pure geometry)
+      - Falsifiable (it FAILS right now, PASSES when fixed)
+
+      ### 3. Extract and Test in Node
+      Pull the pure logic (no DOM, no canvas, no game state) into a
+      standalone Node script. Import from `src/` directly.
+      Assert the invariant. Watch it FAIL.
+
+      This is the critical step. The script runs in milliseconds and gives
+      you a ground truth that screenshots cannot. If the logic is tangled
+      with rendering, extract the math first — that's part of the fix.
+
+      ### 4. Fix the Code
+      Only now touch the source. Make the minimal change to satisfy the
+      invariant.
+
+      ### 5. Re-run the Invariant
+      The Node script must PASS. If it doesn't, your fix is wrong.
+      Do NOT look at screenshots yet. Do NOT declare victory.
+
+      ### 6. Screenshot and Compare
+      Only after the invariant passes: capture a new screenshot.
+      Compare against baseline. The visual change should match the
+      invariant's prediction.
+
+      ### 7. Hand Off for Playtest
+      Per the playtest-first contract: describe what you changed, what
+      the invariant guarantees, and what the user should verify visually.
+      Wait for confirmation before locking in tests.
+
+      ## Red Flags — Stop and Reassess
+
+      | Thought | Reality |
+      |---------|---------|
+      | "Let me just tweak it and screenshot" | Stop. Write the invariant first. |
+      | "The screenshot looks fine" | Screenshots are the LAST check, not the first. |
+      | "I'll verify visually" | Visual verification without a geometric invariant is vibes. |
+      | "The math is too complex to extract" | Then you don't understand the bug. Simplify until you do. |
+      | "It works, let me move on" | Did the invariant pass? No? Then it doesn't work. |
+
+      ## Game-Dev Exception: Playtest-First Applies
+
+      This mode finds and fixes the bug. It does NOT replace playtesting.
+      After the invariant passes and the screenshot looks right, the user
+      still playtests to confirm the FEEL is correct. Only then write
+      regression tests.
+
+      ## Screenshot Helper
+
+      Use `scripts/screenshot.js`:
+      ```bash
+      node scripts/screenshot.js --url http://localhost:8080 --out debug-baseline.png
+      # ... after fix ...
+      node scripts/screenshot.js --url http://localhost:8080 --out debug-fixed.png
+      ```
+      If the helper doesn't exist for your setup, create it with Playwright:
+      it loads the URL, waits for the game to render, screenshots to the
+      output path. Keep it simple.
+    whenToUse: "Use this mode when you need to debug a visual/rendering bug: lighting, shadows, sprite placement, layout, or animation — anything where the symptom is 'it looks wrong'"
+    groups:
+      - read
+      - edit
+      - command
