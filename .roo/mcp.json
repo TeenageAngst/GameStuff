@@ -1,12 +1,1 @@
-{
-	"mcpServers": {
-		"duckduckgo-search": {
-			"command": "C:\\Users\\wooho\\AppData\\Roaming\\Python\\Python313\\Scripts\\duckduckgo-mcp-server.exe",
-			"args": [],
-			"disabled": false,
-			"alwaysAllow": [
-				"fetch_content"
-			]
-		}
-	}
-}
+{"mcpServers":{"duckduckgo-search":{"alwaysAllow":["fetch_content"],"args":["duckduckgo-mcp-server"],"command":"uvx","disabled":false}}}

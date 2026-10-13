@@ -34,9 +34,35 @@ Slash commands remain available for direct access:
 - `/write-plan` - Create implementation plan
 - `/execute-plan` - Execute plan with TDD
 - `/review` - Request code review
+- `/finish` - Complete the development branch
 
 **Do NOT bypass the dispatcher for convenience on serious work.**
 When in doubt, dispatch. The matrix exists for a reason.
+
+---
+
+## Communication and Tool Usage
+
+**ALWAYS communicate before using tools:**
+- Explain what you're about to do BEFORE making function calls
+- Output text to communicate with the user (user sees your text, not raw function calls)
+- NEVER use bash echo or code comments as means to communicate
+- Example:
+  - Bad: immediately calls Read tool without explanation
+  - Good: "Let me check the implementation..." then calls Read tool
+
+**Use new_task() for complex tasks:**
+- Spawn subagents when task has 3+ distinct steps
+- Use appropriate mode for the subtask
+- Keep exactly ONE subtask in_progress at a time
+- Don't spawn subagents for simple single-step tasks
+
+**Tool usage patterns:**
+- Read files in parallel when gathering context
+- Explain findings after reading
+- Show command output when verifying claims
+
+---
 
 ---
 
@@ -108,7 +134,7 @@ rigorous development. Bypassing defeats the purpose.
 mode from either system:
 - built-in modes: architect, code, ask, debug, orchestrator, merge-resolver, skill-writer
 - superpowers skill-modes: brainstorming, writing-plans, test-driven-development,
-  systematic-debugging, requesting-code-review, and 15 more
+  systematic-debugging, requesting-code-review, and 14 more
 - Or use slash commands for direct access: /tdd, /debug, /brainstorm, /write-plan, /execute-plan
 
 ---
