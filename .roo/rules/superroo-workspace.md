@@ -4,12 +4,30 @@ This workspace enforces SuperRoo development discipline.
 
 ---
 
-## Use SuperRoo Skill-Modes
+## Mode Selection: Use the Dispatcher
 
-For serious work, you MUST use SuperRoo skill-modes. Start with:
-- **using-superpowers** - Entry point that selects the right skill
+This workspace has **two complementary mode systems**:
 
-Or use slash commands for quick access:
+1. **Built-in Zoo modes** (general capabilities): `architect`, `code`,
+   `ask`, `debug`, `orchestrator`, `merge-resolver`, `skill-writer`.
+2. **SuperRoo superpowers skill-modes** (process disciplines):
+   `test-driven-development`, `systematic-debugging`, `brainstorming`,
+   `writing-plans`, `executing-plans`, `requesting-code-review`, and
+   14 more.
+
+**Single entry point:** for any non-trivial task, invoke the
+**`mode-dispatcher`** skill (`.roo/skills/mode-dispatcher/SKILL.md`). It
+consults a context-aware decision matrix and routes to whichever system is
+most beneficial — a built-in mode or a superpowers skill-mode — then hands
+off. It is a router, not a doer.
+
+Skip the dispatcher only when:
+- ⚠️ The user explicitly named a mode (go straight there)
+- ⚠️ Trivial one-off edits (use `code` directly)
+- ⚠️ Quick questions with no code change (use `ask` directly)
+- ⚠️ You are already inside a superpowers skill-mode mid-workflow
+
+Slash commands remain available for direct access:
 - `/tdd` - Test-driven development
 - `/debug` - Systematic debugging
 - `/brainstorm` - Design refinement
@@ -17,24 +35,8 @@ Or use slash commands for quick access:
 - `/execute-plan` - Execute plan with TDD
 - `/review` - Request code review
 
-Or select directly from 21 skill-modes:
-- **test-driven-development** - RED-GREEN-REFACTOR cycle
-- **systematic-debugging** - 4-phase root-cause investigation
-- **brainstorming** - Socratic design refinement
-- **writing-plans** - Comprehensive implementation plans
-- **executing-plans** - Batch execution with review checkpoints
-- **requesting-code-review** - Perform rigorous code review
-- **receiving-code-review** - Process review feedback
-- And 14 more specialized skills...
-
-**Do NOT bypass SuperRoo modes for convenience.**
-
-Only use other modes for:
-- ⚠️ Trivial one-off tasks explicitly marked as experimental
-- ⚠️ User explicitly requests different mode
-- ⚠️ Quick questions that don't involve code changes
-
-When in doubt, use a skill-mode. They exist for a reason.
+**Do NOT bypass the dispatcher for convenience on serious work.**
+When in doubt, dispatch. The matrix exists for a reason.
 
 ---
 
@@ -89,23 +91,32 @@ Rules:
 
 ---
 
-## If You're Bypassing SuperRoo Modes
+## If You're Bypassing the Dispatcher
 
 **Stop and ask:**
-- Why am I not using a SuperRoo mode?
-- Is this serious work? (If yes → use SuperRoo mode)
-- Am I bypassing for convenience? (If yes → stop, use proper mode)
+- Why am I not using the mode-dispatcher skill?
+- Is this serious work? (If yes → dispatch)
+- Am I bypassing for convenience? (If yes → stop, dispatch)
 
 The discipline exists to catch bugs early, maintain quality, and ensure
 rigorous development. Bypassing defeats the purpose.
 
 ---
 
-**When you start a session, select the appropriate SuperRoo skill-mode:**
-- using-superpowers for automatic skill selection
-- brainstorming for design refinement
-- writing-plans for implementation planning
-- test-driven-development for feature implementation
-- systematic-debugging for investigating bugs
-- requesting-code-review for code review only
-- Or use slash commands: /tdd, /debug, /brainstorm, /write-plan, /execute-plan
+**When you start a session, invoke the `mode-dispatcher` skill**
+(`.roo/skills/mode-dispatcher/SKILL.md`). It routes to the most beneficial
+mode from either system:
+- built-in modes: architect, code, ask, debug, orchestrator, merge-resolver, skill-writer
+- superpowers skill-modes: brainstorming, writing-plans, test-driven-development,
+  systematic-debugging, requesting-code-review, and 15 more
+- Or use slash commands for direct access: /tdd, /debug, /brainstorm, /write-plan, /execute-plan
+
+---
+
+## Decision Escalation
+
+If you find yourself unable to decide between two or more viable
+approaches after reasonable investigation, STOP and present the choices
+to the user with a brief recommendation, then let them pick. Do not
+ruminate silently or keep investigating indefinitely. Use the
+`ask_followup_question` tool to surface the decision.
