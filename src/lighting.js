@@ -11,7 +11,7 @@
 // context. Instead we use a separate <canvas> positioned exactly over the
 // game canvas and redraw it every frame in k.onUpdate.
 
-import { computeShadowPolygon, SHADOW_MAX_DIST } from "./shadowGeometry.js";
+import { computeShadowPolygon, computeAnnularSectorShadow, SHADOW_MAX_DIST } from "./shadowGeometry.js";
 
 const DARKNESS = 0.65; // overlay opacity when no lights are on (default)
 const LIGHT_RADIUS = 220; // radius (px) of a light's illumination
@@ -239,19 +239,57 @@ export function createLighting(k) {
             tctx.filter = `blur(${SHADOW_SOFT}px)`;
             for (const caster of shadowCasters) {
                 if (caster.destroyed) continue;
-                const box = casterBox(caster, SHADOW_MARGIN);
-                const result = shadowPolygon(lx, ly, box);
+                let result;
+                let isSectorWedge = false;
+                if (caster.annularSector) {
+                    // Annular-sector caster (e.g. the light director's ring):
+                    // its shadow is the exact angular wedge of the solid part
+                    // of the ring, so no light leaks between pieces.
+                    //
+                    // The ring blocks ALL light sources, not just the one
+                    // inside it. For a light at the ring's center (the common
+                    // case for a light director), the shadow is the exact
+                    // angular wedge of the solid part of the ring. For a light
+                    // elsewhere (e.g. the green lamp 160px away), the ring is
+                    // a physical object in the scene and blocks that light
+                    // too — use the box shadow of the ring's bounding box as
+                    // a reasonable approximation (the exact shadow of a ring
+                    // segment from an off-center light is complex; the box
+                    // shadow is close enough).
+                    const sec = caster.annularSector;
+                    const distToCenter = Math.hypot(lx - sec.cx, ly - sec.cy);
+                    // Always use the exact annular sector shadow. For a light
+                    // at the ring's center, the shadow is the exact angular
+                    // wedge of the solid part of the ring. For a light
+                    // elsewhere, the shadow is the region blocked by the ring,
+                    // including the interior that's not visible through the
+                    // aperture. This correctly models the C-shape's hole.
+                    result = computeAnnularSectorShadow(lx, ly, sec, SHADOW_MAX_DIST);
+                    isSectorWedge = distToCenter < sec.rIn;
+                } else {
+                    const box = casterBox(caster, SHADOW_MARGIN);
+                    result = shadowPolygon(lx, ly, box);
+                }
                 if (!result) continue;
                 const { poly, farDist } = result;
                 // Radial gradient centered on the light: fully opaque (full
                 // erase) at the object's far edge, fading to transparent at
                 // the edge of the light's radius. This makes the shadow
                 // soften with distance.
-                const fadeEnd = farDist + SHADOW_FADE * LIGHT_RADIUS;
+                //
+                // For the exact sector wedge (a light at the ring's center),
+                // the shadow must fully block the light throughout the entire
+                // light radius — the ring is a solid barrier, not a soft
+                // occluder. Use LIGHT_RADIUS as the "far edge" so the gradient
+                // stays at full opacity across the whole illuminated area.
+                // For a box shadow (external light), use the normal gradient
+                // (fading with distance).
+                const effectiveFarDist = isSectorWedge ? LIGHT_RADIUS : farDist;
+                const fadeEnd = effectiveFarDist + SHADOW_FADE * LIGHT_RADIUS;
                 const sgrad = tctx.createRadialGradient(lx, ly, 0, lx, ly, Math.max(fadeEnd, 1));
                 const peak = light.intensity;
                 sgrad.addColorStop(0, `rgba(0, 0, 0, ${peak})`);
-                sgrad.addColorStop(Math.min(1, farDist / fadeEnd), `rgba(0, 0, 0, ${peak})`);
+                sgrad.addColorStop(Math.min(1, effectiveFarDist / fadeEnd), `rgba(0, 0, 0, ${peak})`);
                 sgrad.addColorStop(1, "rgba(0, 0, 0, 0)");
                 tctx.fillStyle = sgrad;
                 tctx.beginPath();
