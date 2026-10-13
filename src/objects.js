@@ -118,23 +118,26 @@ export function createLightSwitch(k, id, pos, lamp) {
 // single aperture the light shines through. The player pushes the housing
 // itself to spin it, sweeping the beam around the room.
 //
-// The housing is a ring of thin wall segments (each its own shadow caster,
-// registered via the "interactable" tag, which rooms.js auto-registers),
-// with a 40-degree gap as the aperture. The segments use the `k.rotate(deg)`
-// component for rotation (entity property: obj.angle), and the shadow system
-// supports rotated boxes (see shadowGeometry.js).
+// The housing is a C-shaped annular sector (a ring with a gap). It is baked
+// into a sprite texture (a 2D canvas path fills the concave shape correctly)
+// and rendered as one sprite entity, rotated as a whole. Its shadow is
+// computed by `computeAnnularSectorShadow` (shadowGeometry.js), which
+// produces the exact angular wedge of the solid part of the ring — so no
+// light leaks between pieces (the old 7-chord approach left ~2° gaps at
+// each joint). The entity carries the "interactable" tag so rooms.js
+// auto-registers it as a shadow caster; the `annularSector` property tells
+// the lighting system to use the sector geometry instead of a box.
 //
 // `lamp` is the light object returned by createLight. The housing is
 // centered on the lamp's rendered center (mirroring lightCenter in
 // lighting.js), not on its top-left pos.
 export function createLightDirector(k, id, lamp, lighting, player) {
     const room = id.split('.')[0];
-    const R = 30;            // housing radius (lamp center to wall centers)
-    const WALL_T = 8;        // wall thickness
-    const SEG_LEN = 24;      // wall segment length (chords overlap slightly)
+    const R_IN = 26;         // inner radius of the ring
+    const R_OUT = 34;        // outer radius of the ring
     const APERTURE = 40 * Math.PI / 180; // angular size of the opening
-    const NSEGS = 7;         // segments covering the rest of the ring
     const ROT_SPEED = 2.5;   // radians per second while pushed
+    const RING_COLOR = [40, 40, 60];
 
     // Rendered center of the lamp.
     const sx = lamp.scale ? lamp.scale.x : 1;
@@ -145,45 +148,83 @@ export function createLightDirector(k, id, lamp, lighting, player) {
     // Current rotation in radians (0 = aperture faces east).
     let angle = 0;
 
-    const span = ((Math.PI * 2) - APERTURE) / NSEGS;
-    const segments = [];
-    for (let i = 0; i < NSEGS; i++) {
-        const baseAngle = (APERTURE / 2) + (span * (i + 0.5));
-        const seg = k.add([
-            k.rect(SEG_LEN, WALL_T),
-            k.pos(cx + R * Math.cos(baseAngle), cy + R * Math.sin(baseAngle)),
-            k.anchor("center"),
-            k.color([40, 40, 60]),
-            k.rotate(0),
-            k.area(),
-            "interactable",
-            `${id}.seg${i}`,
-            `room:${room}`,
-            { interact: () => {} },
-        ]);
-        seg.baseAngle = baseAngle;
-        segments.push(seg);
-    }
+    // Solid arc bounds (local, aperture centered on the +x axis). These drive
+    // the shadow geometry; the rendered sprite is baked to match them.
+    const a0 = APERTURE / 2;
+    const a1 = Math.PI * 2 - APERTURE / 2;
 
-    // Place every segment on the ring, tangential to it.
+    // Bake the C-shaped annular sector into a sprite texture.
+    //
+    // Why a baked sprite instead of k.polygon: Kaboom's drawPolygon
+    // triangulates with a triangle fan from vertex 0, which is only valid for
+    // convex polygons. The housing is a concave annular sector, so the fan
+    // sweeps triangles across the inner hole and fills it in — the ring
+    // rendered as a solid dark disc and the lamp's glow sat inside the disc
+    // instead of inside the ring's opening. A 2D canvas path fills concave
+    // shapes correctly, so we bake the C-shape once and render it as a sprite.
+    //
+    // The sprite is drawn in canvas coordinates (y-down, angles clockwise from
+    // +x) with the aperture centered on the +x axis, matching the shadow
+    // geometry's local frame (computeAnnularSectorShadow uses the same
+    // cos/sin convention in the y-down overlay canvas). Rotating the sprite by
+    // `angle` keeps the rendered aperture aligned with the shadow wedge.
+    const PAD = 2;
+    const SIZE = Math.ceil((R_OUT + PAD) * 2);
+    const ringCanvas = document.createElement("canvas");
+    ringCanvas.width = SIZE;
+    ringCanvas.height = SIZE;
+    const rctx = ringCanvas.getContext("2d");
+    const c = SIZE / 2;
+    rctx.beginPath();
+    // Outer arc: a0 → a1 clockwise (the long way, through the left side).
+    rctx.arc(c, c, R_OUT, a0, a1, false);
+    // Line to inner radius.
+    rctx.lineTo(c + R_IN * Math.cos(a1), c + R_IN * Math.sin(a1));
+    // Inner arc: a1 → a0 counterclockwise (back along the inner radius).
+    rctx.arc(c, c, R_IN, a1, a0, true);
+    // Line back to outer radius.
+    rctx.lineTo(c + R_OUT * Math.cos(a0), c + R_OUT * Math.sin(a0));
+    rctx.closePath();
+    rctx.fillStyle = `rgb(${RING_COLOR[0]}, ${RING_COLOR[1]}, ${RING_COLOR[2]})`;
+    rctx.fill();
+    // loadSprite with an ImageSource (canvas) resolves synchronously, so the
+    // returned Asset is ready to use immediately.
+    const ringSprite = k.loadSprite("director-ring", ringCanvas);
+
+    const housing = k.add([
+        k.sprite(ringSprite),
+        k.pos(cx, cy),
+        k.anchor("center"),
+        k.rotate(0),
+        k.area(),
+        "interactable",
+        id,
+        `room:${room}`,
+        { interact: () => {} },
+    ]);
+
+    // Tell the lighting system this caster is an annular sector, not a box.
+    // The sector's center is the lamp center; a0/a1 are the solid arc's
+    // bounds in world space (updated as the housing rotates).
+    housing.annularSector = { cx, cy, rIn: R_IN, rOut: R_OUT, a0, a1 };
+
+    // Rotate the housing and keep the annularSector's world-space angles in
+    // sync so the shadow geometry stays correct.
     function place() {
-        for (const s of segments) {
-            const a = s.baseAngle + angle;
-            s.pos.x = cx + (R * Math.cos(a));
-            s.pos.y = cy + (R * Math.sin(a));
-            s.angle = ((a * 180) / Math.PI) + 90;
-        }
+        housing.angle = (angle * 180) / Math.PI;
+        housing.annularSector.a0 = a0 + angle;
+        housing.annularSector.a1 = a1 + angle;
     }
     place();
 
     const update = k.onUpdate(() => {
-        if (segments[0].destroyed) {
+        if (housing.destroyed) {
             update.cancel(); // housing is gone; stop tracking it
             return;
         }
-        // Pushing: while the player overlaps any wall segment, spin the
-        // housing toward the player's position so the aperture follows them.
-        if (player && !player.destroyed && segments.some((s) => player.isColliding(s))) {
+        // Pushing: while the player overlaps the housing, spin it toward
+        // the player's position so the aperture follows them.
+        if (player && !player.destroyed && player.isColliding(housing)) {
             const playerAngle = Math.atan2(player.pos.y - cy, player.pos.x - cx);
             let diff = playerAngle - angle;
             while (diff > Math.PI) diff -= 2 * Math.PI;
@@ -194,7 +235,7 @@ export function createLightDirector(k, id, lamp, lighting, player) {
         }
     });
 
-    return segments;
+    return [housing];
 }
 
 // Creates a stat-modifier object that toggles the player's speed.
