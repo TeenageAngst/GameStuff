@@ -205,12 +205,49 @@ export function computeAnnularSectorShadow(lx, ly, sector, maxDist = SHADOW_MAX_
     }
 
     // Light is elsewhere (e.g. another lamp across the room): the wedge above
-    // is only valid for a light at the sector's center. Fall back to the
-    // standard box shadow on the ring's bounding box — a conservative
-    // approximation that's correct for distant lights. (A tangent-ray shadow
-    // of the outer circle was tried here, but the tangent points came out on
-    // the wrong side of the ring, producing a self-intersecting polygon that
-    // covered the light's own position.)
-    const box = { x: cx - rOut, y: cy - rOut, w: rOut * 2, h: rOut * 2 };
-    return computeShadowPolygon(lx, ly, box, maxDist);
+    // is only valid for a light at the sector's center. From outside, the ring
+    // is a solid occluder — its interior sits behind its walls, so the shadow
+    // must cover the interior too, not just the region behind the ring.
+    // Compute the tangent-ray shadow of the outer circle: near arc facing the
+    // light, tangent rays extended to maxDist, far arc closing the cone. This
+    // covers the disc (including the interior) plus the shadow behind it.
+    const dirToLight = Math.atan2(ly - cy, lx - cx); // center -> light
+    const halfAngle = Math.acos(Math.min(1, rOut / dist));
+    const t1 = dirToLight - halfAngle;
+    const t2 = dirToLight + halfAngle;
+
+    // Near arc at rOut from t1 to t2 (facing the light).
+    for (let i = 0; i <= ARC_STEPS; i++) {
+        const a = t1 + (t2 - t1) * (i / ARC_STEPS);
+        poly.push({ x: cx + rOut * Math.cos(a), y: cy + rOut * Math.sin(a) });
+    }
+
+    const tp1 = { x: cx + rOut * Math.cos(t1), y: cy + rOut * Math.sin(t1) };
+    const tp2 = { x: cx + rOut * Math.cos(t2), y: cy + rOut * Math.sin(t2) };
+    function projectOut(px, py) {
+        const dx = px - lx, dy = py - ly;
+        const d = Math.hypot(dx, dy) || 1;
+        return { x: lx + (dx * maxDist) / d, y: ly + (dy * maxDist) / d };
+    }
+    const fp2 = projectOut(tp2.x, tp2.y);
+    poly.push(fp2);
+
+    // Far arc at maxDist from the light, spanning the shadow cone (short way).
+    const fp1 = projectOut(tp1.x, tp1.y);
+    const f1 = Math.atan2(fp2.y - ly, fp2.x - lx);
+    const f2 = Math.atan2(fp1.y - ly, fp1.x - lx);
+    let diff = f2 - f1;
+    while (diff <= -Math.PI) diff += 2 * Math.PI;
+    while (diff > Math.PI) diff -= 2 * Math.PI;
+    for (let i = 0; i <= ARC_STEPS; i++) {
+        const a = f1 + diff * (i / ARC_STEPS);
+        poly.push({ x: lx + maxDist * Math.cos(a), y: ly + maxDist * Math.sin(a) });
+    }
+    poly.push(fp1);
+
+    return {
+        poly,
+        nearDist: Math.max(0, dist - rOut),
+        farDist: dist + rOut,
+    };
 }

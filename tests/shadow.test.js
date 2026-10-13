@@ -191,6 +191,9 @@ module.exports = {
       const extLightInside = extPoly ? pointInPoly(-175, 0, extPoly) : null;
       // Behind the ring (away from the light) must still be shadowed.
       const extBehindInside = extPoly ? pointInPoly(80, 0, extPoly) : null;
+      // The ring's interior sits behind its walls from any exterior light, so
+      // it must be shadowed too (no light leaking inside the enclosure).
+      const extInteriorInside = extPoly ? pointInPoly(0, 0, extPoly) : null;
       // Simplicity: no edge may cross another non-adjacent edge.
       function segsCross(p1, p2, p3, p4) {
         const d =
@@ -231,6 +234,7 @@ module.exports = {
         sectorTooFar: sectorTooFar === null ? null : 'non-null',
         extLightInside,
         extBehindInside,
+        extInteriorInside,
         extCrossings,
       };
     });
@@ -338,6 +342,9 @@ module.exports = {
     }
     if (!results.extBehindInside) {
       fail('Exterior annular-sector shadow does not cover the region behind the ring');
+    }
+    if (!results.extInteriorInside) {
+      fail('Exterior annular-sector shadow does not cover the ring interior (light leaks inside the enclosure)');
     }
     if (results.extCrossings !== 0) {
       fail(
