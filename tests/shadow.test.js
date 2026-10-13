@@ -181,6 +181,41 @@ module.exports = {
         sector
       );
 
+      // --- Exterior light (e.g. the green lamp 175px west of the housing).
+      // The sector wedge is only valid for a light at the ring's center; for
+      // any other light the shadow must be a simple polygon that never covers
+      // the light's own position (regression test: a malformed exterior
+      // shadow once swallowed the green lamp's light entirely).
+      const extResult = computeAnnularSectorShadow(-175, 0, sector);
+      const extPoly = extResult ? extResult.poly : null;
+      const extLightInside = extPoly ? pointInPoly(-175, 0, extPoly) : null;
+      // Behind the ring (away from the light) must still be shadowed.
+      const extBehindInside = extPoly ? pointInPoly(80, 0, extPoly) : null;
+      // Simplicity: no edge may cross another non-adjacent edge.
+      function segsCross(p1, p2, p3, p4) {
+        const d =
+          (p2.x - p1.x) * (p4.y - p3.y) - (p2.y - p1.y) * (p4.x - p3.x);
+        if (!d) return false;
+        const t =
+          ((p3.x - p1.x) * (p4.y - p3.y) - (p3.y - p1.y) * (p4.x - p3.x)) / d;
+        const u =
+          ((p3.x - p1.x) * (p2.y - p1.y) - (p3.y - p1.y) * (p2.x - p1.x)) / d;
+        return t > 0.001 && t < 0.999 && u > 0.001 && u < 0.999;
+      }
+      let extCrossings = 0;
+      if (extPoly) {
+        for (let i = 0; i < extPoly.length; i++) {
+          for (let j = i + 1; j < extPoly.length; j++) {
+            const a1 = extPoly[i],
+              a2 = extPoly[(i + 1) % extPoly.length],
+              b1 = extPoly[j],
+              b2 = extPoly[(j + 1) % extPoly.length];
+            if (a1 === b1 || a1 === b2 || a2 === b1 || a2 === b2) continue;
+            if (segsCross(a1, a2, b1, b2)) extCrossings++;
+          }
+        }
+      }
+
       return {
         perAngle,
         axisAngles,
@@ -194,6 +229,9 @@ module.exports = {
         rotatedApertureInside,
         rotatedSolidInside,
         sectorTooFar: sectorTooFar === null ? null : 'non-null',
+        extLightInside,
+        extBehindInside,
+        extCrossings,
       };
     });
 
@@ -292,6 +330,21 @@ module.exports = {
       fail('Annular sector beyond SHADOW_MAX_DIST should not cast a shadow');
     }
     console.log('PASS: Annular sectors beyond SHADOW_MAX_DIST do not cast a shadow');
+
+    // --- 10: exterior light is never inside its own sector shadow, and the
+    // shadow polygon is simple.
+    if (results.extLightInside) {
+      fail('Exterior light is inside its own annular-sector shadow (green lamp regression)');
+    }
+    if (!results.extBehindInside) {
+      fail('Exterior annular-sector shadow does not cover the region behind the ring');
+    }
+    if (results.extCrossings !== 0) {
+      fail(
+        `Exterior annular-sector shadow is self-intersecting (${results.extCrossings} crossings)`
+      );
+    }
+    console.log('PASS: Exterior annular-sector shadow is simple and never covers its light');
 
     console.log('All shadow geometry tests passed');
   },
