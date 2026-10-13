@@ -6,7 +6,7 @@ description: >
   orchestrator, merge-resolver, skill-writer) with the SuperRoo
   superpowers skill-modes (test-driven-development, systematic-debugging,
   brainstorming, writing-plans, executing-plans, requesting-code-review,
-  and 14 more). Use when starting any non-trivial task and you are unsure
+  and 15 more). Use when starting any non-trivial task and you are unsure
   which mode to use, when the user asks "which mode should I use", or when
   a task spans multiple specialties. Keywords: dispatch, route, mode
   selection, which mode, superpowers, skill-mode, workflow selection.
@@ -73,19 +73,20 @@ First matching row wins.
 |---|-----------|----------|--------|-----|
 | 0 | Gameplay / visual / behavior change (game project) | `code` + playtest-first handoff | Built-in | Feel is subjective; TDD would lock in unverified expectations. Implement, hand off for playtest, lock tests only after user confirms. |
 | 1 | New feature or bug fix in **pure logic** (no subjective feel) | `test-driven-development` | Superpowers | Enforces RED-GREEN-REFACTOR; failing test first proves the test tests the right thing. |
-| 2 | Bug, failing test, or "something is broken" | `systematic-debugging` | Superpowers | 4-phase root-cause investigation before any fix; prevents symptom-patching. |
-| 3 | Multiple independent bugs or investigations | `dispatching-parallel-agents` | Superpowers | Concurrent independent investigations beat serial guessing. |
-| 4 | "How should I design X?" / open-ended design question | `brainstorming` | Superpowers | Socratic refinement before committing to an approach. |
-| 5 | "Make a plan for X" / large feature scoping | `writing-plans` | Superpowers | Comprehensive plan written assuming zero context. |
-| 6 | "Execute this plan" (plan already exists) | `executing-plans` | Superpowers | Batch execution with review checkpoints. |
-| 7 | "Review my code" / review a diff or PR | `requesting-code-review` | Superpowers | Rigorous review against plan and standards. |
-| 8 | Processing review feedback you received | `receiving-code-review` | Superpowers | Structured triage of feedback before acting on it. |
-| 9 | Multi-domain project needing coordination across specialties | `orchestrator` | Built-in | Cross-specialty task decomposition and coordination. |
-| 10 | Merge conflict on a specific PR | `merge-resolver` | Built-in | Git-history-aware conflict resolution. |
-| 11 | Quick question, explanation, or documentation lookup | `ask` | Built-in | No code change; no process overhead needed. |
-| 12 | Trivial one-off edit (typo, rename, small tweak) | `code` | Built-in | Dispatching is overhead for one-line changes. |
-| 13 | Creating or editing a skill (SKILL.md) | `skill-writer` | Built-in | Meta-work on skills has its own spec-compliance workflow. |
-| 14 | Architecture / system design that needs a written spec | `architect` | Built-in | Planning and design artifacts without a superpowers plan workflow. |
+| 2 | Visual/rendering bug ("looks wrong", lighting, sprite placement) | `visual-debugging` | Superpowers | Checkable geometric invariant in Node before touching code; prevents screenshot-vibes tail-chasing. |
+| 3 | Bug, failing test, or "something is broken" (non-visual) | `systematic-debugging` | Superpowers | 4-phase root-cause investigation before any fix; prevents symptom-patching. |
+| 4 | Multiple independent bugs or investigations | `dispatching-parallel-agents` | Superpowers | Concurrent independent investigations beat serial guessing. |
+| 5 | "How should I design X?" / open-ended design question | `brainstorming` | Superpowers | Socratic refinement before committing to an approach. |
+| 6 | "Make a plan for X" / large feature scoping | `writing-plans` | Superpowers | Comprehensive plan written assuming zero context. |
+| 7 | "Execute this plan" (plan already exists) | `executing-plans` | Superpowers | Batch execution with review checkpoints. |
+| 8 | "Review my code" / review a diff or PR | `requesting-code-review` | Superpowers | Rigorous review against plan and standards. |
+| 9 | Processing review feedback you received | `receiving-code-review` | Superpowers | Structured triage of feedback before acting on it. |
+| 10 | Multi-domain project needing coordination across specialties | `orchestrator` | Built-in | Cross-specialty task decomposition and coordination. |
+| 11 | Merge conflict on a specific PR | `merge-resolver` | Built-in | Git-history-aware conflict resolution. |
+| 12 | Quick question, explanation, or documentation lookup | `ask` | Built-in | No code change; no process overhead needed. |
+| 13 | Trivial one-off edit (typo, rename, small tweak) | `code` | Built-in | Dispatching is overhead for one-line changes. |
+| 14 | Creating or editing a skill (SKILL.md) | `skill-writer` | Built-in | Meta-work on skills has its own spec-compliance workflow. |
+| 15 | Architecture / system design that needs a written spec | `architect` | Built-in | Planning and design artifacts without a superpowers plan workflow. |
 
 ### Tie-breakers
 

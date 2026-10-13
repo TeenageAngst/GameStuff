@@ -13,7 +13,7 @@ This workspace has **two complementary mode systems**:
 2. **SuperRoo superpowers skill-modes** (process disciplines):
    `test-driven-development`, `systematic-debugging`, `brainstorming`,
    `writing-plans`, `executing-plans`, `requesting-code-review`, and
-   14 more.
+   15 more.
 
 **Single entry point:** for any non-trivial task, invoke the
 **`mode-dispatcher`** skill (`.roo/skills/mode-dispatcher/SKILL.md`). It
@@ -134,7 +134,7 @@ rigorous development. Bypassing defeats the purpose.
 mode from either system:
 - built-in modes: architect, code, ask, debug, orchestrator, merge-resolver, skill-writer
 - superpowers skill-modes: brainstorming, writing-plans, test-driven-development,
-  systematic-debugging, requesting-code-review, and 14 more
+  systematic-debugging, requesting-code-review, and 15 more
 - Or use slash commands for direct access: /tdd, /debug, /brainstorm, /write-plan, /execute-plan
 
 ---
