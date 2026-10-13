@@ -242,28 +242,21 @@ export function createLighting(k) {
                 let result;
                 let isSectorWedge = false;
                 if (caster.annularSector) {
-                    // Annular-sector caster (e.g. the light director's ring):
-                    // its shadow is the exact angular wedge of the solid part
-                    // of the ring, so no light leaks between pieces.
-                    //
+                    // Annular-sector caster (e.g. the light director's ring).
                     // The ring blocks ALL light sources, not just the one
-                    // inside it. For a light at the ring's center (the common
-                    // case for a light director), the shadow is the exact
-                    // angular wedge of the solid part of the ring. For a light
-                    // elsewhere (e.g. the green lamp 160px away), the ring is
-                    // a physical object in the scene and blocks that light
-                    // too — use the box shadow of the ring's bounding box as
-                    // a reasonable approximation (the exact shadow of a ring
-                    // segment from an off-center light is complex; the box
-                    // shadow is close enough).
+                    // inside it. computeAnnularSectorShadow dispatches on the
+                    // light's position:
+                    // - Light at the ring's center (dist < rIn): exact angular
+                    //   wedge of the solid part [a0, a1]; no light leaks
+                    //   between pieces. Hard shadow (no fade) across the full
+                    //   light radius — the ring is a solid barrier.
+                    // - Exterior light, aperture facing away: tangent-ray disc
+                    //   shadow covering the interior plus the region behind.
+                    // - Exterior light, aperture facing it: as above, with a
+                    //   notch so the light shaft enters through the aperture.
+                    // See computeAnnularSectorShadow for the full geometry.
                     const sec = caster.annularSector;
                     const distToCenter = Math.hypot(lx - sec.cx, ly - sec.cy);
-                    // Always use the exact annular sector shadow. For a light
-                    // at the ring's center, the shadow is the exact angular
-                    // wedge of the solid part of the ring. For a light
-                    // elsewhere, the shadow is the region blocked by the ring,
-                    // including the interior that's not visible through the
-                    // aperture. This correctly models the C-shape's hole.
                     result = computeAnnularSectorShadow(lx, ly, sec, SHADOW_MAX_DIST);
                     isSectorWedge = distToCenter < sec.rIn;
                 } else {

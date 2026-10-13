@@ -154,19 +154,26 @@ export function computeShadowPolygon(lx, ly, box, maxDist = SHADOW_MAX_DIST, ang
 // radius rIn, outer radius rOut, and angular span [a0, a1] in radians (the
 // solid part of the ring; the aperture is the complementary gap).
 //
-// The shadow is the region behind the sector (away from the light) that the
-// light cannot reach. For a light at the sector's center (the common case for
-// a light director), the shadow is the angular wedge [a0, a1] extending from
-// rOut to maxDist. The polygon is a proper annular sector:
-//   - Near boundary: arc at rOut from a0 to a1 (counterclockwise).
-//   - Far boundary: arc at maxDist from a1 back to a0 (clockwise).
-// Both arcs are sampled at ARC_STEPS points for smoothness. The two radial
-// edges (at a0 and a1) are implicit in the polygon's lineTo connections.
+// Three cases, dispatched on the light's distance from the sector center:
 //
-// For a light elsewhere (not at the center), the wedge is not valid, so the
-// shadow falls back to the standard box shadow on the ring's bounding box
-// (see below) — a conservative approximation that's correct for distant
-// lights.
+// 1. Interior light (dist < rIn, e.g. the lamp inside the light director):
+//    the shadow is the angular wedge [a0, a1] extending from rOut to maxDist.
+//    Near boundary: arc at rOut from a0 to a1. Far boundary: arc at maxDist
+//    from a1 back to a0. Both arcs sampled at ARC_STEPS points. The wedge is
+//    exact because the light is at the sector's center.
+//
+// 2. Exterior light, aperture facing away: the ring is a solid occluder from
+//    outside — its interior sits behind its walls. The shadow is the
+//    tangent-ray shadow of the outer circle (disc): near arc facing the light
+//    between the tangent points, tangent rays extended to maxDist, far arc
+//    closing the cone. This covers the disc interior plus the shadow behind
+//    it, so no light leaks inside the enclosure.
+//
+// 3. Exterior light, aperture facing the light: as case 2, but with a notch
+//    cut out for the light shaft through the aperture. The near boundary
+//    follows the outer arc, dips in through the aperture along the light rays
+//    to the far inner edge, crosses at rIn, and comes back out. The shaft
+//    stays lit; off-shaft interior stays shadowed.
 //
 // `sector` is { cx, cy, rIn, rOut, a0, a1 }.
 // Returns { poly, nearDist, farDist } or null if the sector is too far away.
