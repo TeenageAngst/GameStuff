@@ -118,8 +118,9 @@ export function createLightSwitch(k, id, pos, lamp) {
 // single aperture the light shines through. The player pushes the housing
 // itself to spin it, sweeping the beam around the room.
 //
-// The housing is a single annular-sector polygon (a ring with a gap),
-// rendered as one `k.polygon` entity and rotated as a whole. Its shadow is
+// The housing is a C-shaped annular sector (a ring with a gap). It is baked
+// into a sprite texture (a 2D canvas path fills the concave shape correctly)
+// and rendered as one sprite entity, rotated as a whole. Its shadow is
 // computed by `computeAnnularSectorShadow` (shadowGeometry.js), which
 // produces the exact angular wedge of the solid part of the ring — so no
 // light leaks between pieces (the old 7-chord approach left ~2° gaps at
@@ -136,7 +137,7 @@ export function createLightDirector(k, id, lamp, lighting, player) {
     const R_OUT = 34;        // outer radius of the ring
     const APERTURE = 40 * Math.PI / 180; // angular size of the opening
     const ROT_SPEED = 2.5;   // radians per second while pushed
-    const ARC_STEPS = 24;    // polygon samples per arc (smoothness)
+    const RING_COLOR = [40, 40, 60];
 
     // Rendered center of the lamp.
     const sx = lamp.scale ? lamp.scale.x : 1;
@@ -147,28 +148,53 @@ export function createLightDirector(k, id, lamp, lighting, player) {
     // Current rotation in radians (0 = aperture faces east).
     let angle = 0;
 
-    // Build the annular-sector polygon in local coordinates (centered on
-    // origin). The solid part spans [APERTURE/2, 2π - APERTURE/2]; the
-    // aperture is the gap centered on the +x axis.
+    // Solid arc bounds (local, aperture centered on the +x axis). These drive
+    // the shadow geometry; the rendered sprite is baked to match them.
     const a0 = APERTURE / 2;
     const a1 = Math.PI * 2 - APERTURE / 2;
-    const pts = [];
-    // Outer arc: a0 → a1.
-    for (let i = 0; i <= ARC_STEPS; i++) {
-        const a = a0 + (a1 - a0) * (i / ARC_STEPS);
-        pts.push(k.vec2(R_OUT * Math.cos(a), R_OUT * Math.sin(a)));
-    }
-    // Inner arc: a1 → a0 (reverse direction to close the ring).
-    for (let i = ARC_STEPS; i >= 0; i--) {
-        const a = a0 + (a1 - a0) * (i / ARC_STEPS);
-        pts.push(k.vec2(R_IN * Math.cos(a), R_IN * Math.sin(a)));
-    }
+
+    // Bake the C-shaped annular sector into a sprite texture.
+    //
+    // Why a baked sprite instead of k.polygon: Kaboom's drawPolygon
+    // triangulates with a triangle fan from vertex 0, which is only valid for
+    // convex polygons. The housing is a concave annular sector, so the fan
+    // sweeps triangles across the inner hole and fills it in — the ring
+    // rendered as a solid dark disc and the lamp's glow sat inside the disc
+    // instead of inside the ring's opening. A 2D canvas path fills concave
+    // shapes correctly, so we bake the C-shape once and render it as a sprite.
+    //
+    // The sprite is drawn in canvas coordinates (y-down, angles clockwise from
+    // +x) with the aperture centered on the +x axis, matching the shadow
+    // geometry's local frame (computeAnnularSectorShadow uses the same
+    // cos/sin convention in the y-down overlay canvas). Rotating the sprite by
+    // `angle` keeps the rendered aperture aligned with the shadow wedge.
+    const PAD = 2;
+    const SIZE = Math.ceil((R_OUT + PAD) * 2);
+    const ringCanvas = document.createElement("canvas");
+    ringCanvas.width = SIZE;
+    ringCanvas.height = SIZE;
+    const rctx = ringCanvas.getContext("2d");
+    const c = SIZE / 2;
+    rctx.beginPath();
+    // Outer arc: a0 → a1 clockwise (the long way, through the left side).
+    rctx.arc(c, c, R_OUT, a0, a1, false);
+    // Line to inner radius.
+    rctx.lineTo(c + R_IN * Math.cos(a1), c + R_IN * Math.sin(a1));
+    // Inner arc: a1 → a0 counterclockwise (back along the inner radius).
+    rctx.arc(c, c, R_IN, a1, a0, true);
+    // Line back to outer radius.
+    rctx.lineTo(c + R_OUT * Math.cos(a0), c + R_OUT * Math.sin(a0));
+    rctx.closePath();
+    rctx.fillStyle = `rgb(${RING_COLOR[0]}, ${RING_COLOR[1]}, ${RING_COLOR[2]})`;
+    rctx.fill();
+    // loadSprite with an ImageSource (canvas) resolves synchronously, so the
+    // returned Asset is ready to use immediately.
+    const ringSprite = k.loadSprite("director-ring", ringCanvas);
 
     const housing = k.add([
-        k.polygon(pts),
+        k.sprite(ringSprite),
         k.pos(cx, cy),
         k.anchor("center"),
-        k.color([40, 40, 60]),
         k.rotate(0),
         k.area(),
         "interactable",

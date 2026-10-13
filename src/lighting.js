@@ -240,25 +240,32 @@ export function createLighting(k) {
             for (const caster of shadowCasters) {
                 if (caster.destroyed) continue;
                 let result;
+                let isSectorWedge = false;
                 if (caster.annularSector) {
                     // Annular-sector caster (e.g. the light director's ring):
                     // its shadow is the exact angular wedge of the solid part
                     // of the ring, so no light leaks between pieces.
                     //
-                    // The ring only blocks the light that lives inside it (at
-                    // the ring's center). For other lights (e.g. the green
-                    // lamp 160px away), the ring is just a physical object in
-                    // the scene and should not cast a shadow — it doesn't
-                    // block their light.
+                    // The ring blocks ALL light sources, not just the one
+                    // inside it. For a light at the ring's center (the common
+                    // case for a light director), the shadow is the exact
+                    // angular wedge of the solid part of the ring. For a light
+                    // elsewhere (e.g. the green lamp 160px away), the ring is
+                    // a physical object in the scene and blocks that light
+                    // too — use the box shadow of the ring's bounding box as
+                    // a reasonable approximation (the exact shadow of a ring
+                    // segment from an off-center light is complex; the box
+                    // shadow is close enough).
                     const sec = caster.annularSector;
                     const distToCenter = Math.hypot(lx - sec.cx, ly - sec.cy);
-                    if (distToCenter < sec.rIn) {
-                        // Light is at the ring's center: use the exact wedge.
-                        result = computeAnnularSectorShadow(lx, ly, sec, SHADOW_MAX_DIST);
-                    } else {
-                        // Light is elsewhere: the ring doesn't block it.
-                        continue;
-                    }
+                    // Always use the exact annular sector shadow. For a light
+                    // at the ring's center, the shadow is the exact angular
+                    // wedge of the solid part of the ring. For a light
+                    // elsewhere, the shadow is the region blocked by the ring,
+                    // including the interior that's not visible through the
+                    // aperture. This correctly models the C-shape's hole.
+                    result = computeAnnularSectorShadow(lx, ly, sec, SHADOW_MAX_DIST);
+                    isSectorWedge = distToCenter < sec.rIn;
                 } else {
                     const box = casterBox(caster, SHADOW_MARGIN);
                     result = shadowPolygon(lx, ly, box);
@@ -270,13 +277,14 @@ export function createLighting(k) {
                 // the edge of the light's radius. This makes the shadow
                 // soften with distance.
                 //
-                // For annular-sector casters (the light director's ring), the
-                // shadow must fully block the light throughout the entire light
-                // radius — the ring is a solid barrier, not a soft occluder.
-                // Use LIGHT_RADIUS as the "far edge" so the gradient stays at
-                // full opacity across the whole illuminated area.
-                const isSector = !!(caster.annularSector);
-                const effectiveFarDist = isSector ? LIGHT_RADIUS : farDist;
+                // For the exact sector wedge (a light at the ring's center),
+                // the shadow must fully block the light throughout the entire
+                // light radius — the ring is a solid barrier, not a soft
+                // occluder. Use LIGHT_RADIUS as the "far edge" so the gradient
+                // stays at full opacity across the whole illuminated area.
+                // For a box shadow (external light), use the normal gradient
+                // (fading with distance).
+                const effectiveFarDist = isSectorWedge ? LIGHT_RADIUS : farDist;
                 const fadeEnd = effectiveFarDist + SHADOW_FADE * LIGHT_RADIUS;
                 const sgrad = tctx.createRadialGradient(lx, ly, 0, lx, ly, Math.max(fadeEnd, 1));
                 const peak = light.intensity;

@@ -163,6 +163,13 @@ export function computeShadowPolygon(lx, ly, box, maxDist = SHADOW_MAX_DIST, ang
 // Both arcs are sampled at ARC_STEPS points for smoothness. The two radial
 // edges (at a0 and a1) are implicit in the polygon's lineTo connections.
 //
+// For a light elsewhere (not at the center), the shadow is more complex: the
+// ring is a physical object with a hole, so light can only enter the interior
+// through the aperture. The shadow polygon is the region that's blocked by the
+// ring, including the interior that's not visible from the light through the
+// aperture. This is computed by finding the tangent rays from the light to the
+// outer circle and determining which parts of the ring are visible.
+//
 // `sector` is { cx, cy, rIn, rOut, a0, a1 }.
 // Returns { poly, nearDist, farDist } or null if the sector is too far away.
 export function computeAnnularSectorShadow(lx, ly, sector, maxDist = SHADOW_MAX_DIST) {
@@ -176,17 +183,89 @@ export function computeAnnularSectorShadow(lx, ly, sector, maxDist = SHADOW_MAX_
     const ARC_STEPS = 24;
     const poly = [];
 
-    // Near boundary: arc at rOut from a0 to a1 (counterclockwise).
-    for (let i = 0; i <= ARC_STEPS; i++) {
-        const a = a0 + (a1 - a0) * (i / ARC_STEPS);
-        poly.push({ x: cx + rOut * Math.cos(a), y: cy + rOut * Math.sin(a) });
+    // Check if the light is at the sector's center (within the inner radius).
+    // If so, use the simple angular wedge.
+    if (dist < rIn) {
+        // The shadow is the angular wedge [a0, a1] extending from rOut to maxDist.
+        // Near boundary: arc at rOut from a0 to a1.
+        for (let i = 0; i <= ARC_STEPS; i++) {
+            const a = a0 + (a1 - a0) * (i / ARC_STEPS);
+            poly.push({ x: cx + rOut * Math.cos(a), y: cy + rOut * Math.sin(a) });
+        }
+
+        // Far boundary: arc at maxDist from a1 back to a0.
+        for (let i = 0; i <= ARC_STEPS; i++) {
+            const a = a1 - (a1 - a0) * (i / ARC_STEPS);
+            poly.push({ x: cx + maxDist * Math.cos(a), y: cy + maxDist * Math.sin(a) });
+        }
+
+        return {
+            poly,
+            nearDist: rOut - dist,
+            farDist: maxDist,
+        };
     }
 
-    // Far boundary: arc at maxDist from a1 back to a0 (clockwise).
-    for (let i = 0; i <= ARC_STEPS; i++) {
-        const a = a1 - (a1 - a0) * (i / ARC_STEPS);
-        poly.push({ x: cx + maxDist * Math.cos(a), y: cy + maxDist * Math.sin(a) });
+    // Light is elsewhere: compute the shadow of the outer circle.
+    // This blocks all light behind the ring, including the interior.
+    
+    const tangentAngle = Math.acos(rOut / dist);
+    const baseAngle = Math.atan2(cy - ly, cx - lx);
+    const tanAngle1 = baseAngle - tangentAngle;
+    const tanAngle2 = baseAngle + tangentAngle;
+    
+    const tanPt1 = { x: cx + rOut * Math.cos(tanAngle1), y: cy + rOut * Math.sin(tanAngle1) };
+    const tanPt2 = { x: cx + rOut * Math.cos(tanAngle2), y: cy + rOut * Math.sin(tanAngle2) };
+    
+    // Near boundary: arc of outer circle facing the light.
+    // The near arc is the one that contains the angle from the center to the light.
+    // Angle from center to light is baseAngle + PI.
+    const lightAngle = (baseAngle + Math.PI) % (2 * Math.PI);
+    const nTan1 = (tanAngle1 % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+    const nTan2 = (tanAngle2 % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+    
+    let start, end;
+    if (nTan1 < nTan2) {
+        if (lightAngle >= nTan1 && lightAngle <= nTan2) {
+            start = nTan1; end = nTan2;
+        } else {
+            start = nTan2; end = nTan1 + 2 * Math.PI;
+        }
+    } else {
+        if (lightAngle >= nTan2 && lightAngle <= nTan1) {
+            start = nTan2; end = nTan1;
+        } else {
+            start = nTan1; end = nTan2 + 2 * Math.PI;
+        }
     }
+    
+    for (let i = 0; i <= ARC_STEPS; i++) {
+        const a = start + (end - start) * (i / ARC_STEPS);
+        poly.push({ x: cx + rOut * Math.cos(a), y: cy + rOut * Math.sin(a) });
+    }
+    
+    // Project tangent points to maxDist.
+    const p1 = { x: lx + (tanPt1.x - lx) * (maxDist / Math.hypot(tanPt1.x - lx, tanPt1.y - ly)),
+                  y: ly + (tanPt1.y - ly) * (maxDist / Math.hypot(tanPt1.x - lx, tanPt1.y - ly)) };
+    const p2 = { x: lx + (tanPt2.x - lx) * (maxDist / Math.hypot(tanPt2.x - lx, tanPt2.y - ly)),
+                  y: ly + (tanPt2.y - ly) * (maxDist / Math.hypot(tanPt2.x - lx, tanPt2.y - ly)) };
+    
+    poly.push(p2);
+    
+    // Far boundary: arc at maxDist.
+    const fStart = Math.atan2(p2.y - ly, p2.x - lx);
+    const fEnd = Math.atan2(p1.y - ly, p1.x - lx);
+    
+    let diff = fEnd - fStart;
+    while (diff < 0) diff += 2 * Math.PI;
+    while (diff > 2 * Math.PI) diff -= 2 * Math.PI;
+    
+    for (let i = 0; i <= ARC_STEPS; i++) {
+        const a = fStart + diff * (i / ARC_STEPS);
+        poly.push({ x: lx + maxDist * Math.cos(a), y: ly + maxDist * Math.sin(a) });
+    }
+    
+    poly.push(p1);
 
     return {
         poly,
