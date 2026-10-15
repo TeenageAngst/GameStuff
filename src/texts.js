@@ -11,5 +11,7 @@
 export const TEXTS = {
     "main.narrative.air": "The air feels heavy here...",
     "main.door.south": "A dark room. Two lamps wait in the gloom — one green, one red.",
+    "main.door.east": "A long, narrow hallway stretches before you, lit by a sequence of colorful lamps.",
     "empty.door.north": "Back where you started.",
+    "hallway1.door.west": "Back to the main room.",
 };
