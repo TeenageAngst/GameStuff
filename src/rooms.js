@@ -117,12 +117,12 @@ const ROOMS = {
                 k.z(-50),
             ]));
 
-            // Walls
+            // Walls (tagged interactable so they block light and cast shadows)
             const wallColor = [80, 70, 60];
-            objects.push(k.add([k.rect(roomW, WALL), k.pos(0, 0), k.color(wallColor), k.z(-40)]));
-            objects.push(k.add([k.rect(roomW, WALL), k.pos(0, roomH - WALL), k.color(wallColor), k.z(-40)]));
-            objects.push(k.add([k.rect(WALL, roomH), k.pos(0, 0), k.color(wallColor), k.z(-40)]));
-            objects.push(k.add([k.rect(WALL, roomH), k.pos(roomW - WALL, 0), k.color(wallColor), k.z(-40)]));
+            objects.push(k.add([k.rect(roomW, WALL), k.pos(0, 0), k.color(wallColor), k.z(-40), "interactable", `room:${ROOM_IDS.HALLWAY1}`]));
+            objects.push(k.add([k.rect(roomW, WALL), k.pos(0, roomH - WALL), k.color(wallColor), k.z(-40), "interactable", `room:${ROOM_IDS.HALLWAY1}`]));
+            objects.push(k.add([k.rect(WALL, roomH), k.pos(0, 0), k.color(wallColor), k.z(-40), "interactable", `room:${ROOM_IDS.HALLWAY1}`]));
+            objects.push(k.add([k.rect(WALL, roomH), k.pos(roomW - WALL, 0), k.color(wallColor), k.z(-40), "interactable", `room:${ROOM_IDS.HALLWAY1}`]));
 
             // Alternating lights, spaced so their glow circles (440px diameter)
             // somewhat overlap. 11 lamps × 320px spacing fills the hallway.
