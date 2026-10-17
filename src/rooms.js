@@ -150,7 +150,38 @@ const ROOMS = {
                 objects.push(light);
             }
 
-            // Door back to main
+            // Moving walls: vertical pistons between every other lamp pair.
+            // They oscillate up/down, block the player, and cast shadows.
+            const wallXs = [780, 1420, 2060, 2700, 3340];
+            const wallW = 40, wallH = 140;
+            const wallBaseY = roomH / 2;
+            const wallAmp = 80;
+            wallXs.forEach((wx, wi) => {
+                const wall = k.add([
+                    k.rect(wallW, wallH),
+                    k.pos(wx - wallW / 2, wallBaseY - wallH / 2),
+                    k.anchor("topleft"),
+                    k.color(70, 70, 80),
+                    k.area(),
+                    k.body({ isStatic: true }),
+                    "interactable",
+                    `hallway1.wall.${wi}`,
+                    `room:${ROOM_IDS.HALLWAY1}`,
+                ]);
+                wall.z = 0;
+                objects.push(wall);
+                // Oscillate vertically with a per-wall phase offset.
+                const phase = wi * 1.3;
+                const speed = 1.2;
+                let t = 0;
+                k.onUpdate(() => {
+                    // Only animate while this room is active.
+                    if (wall.destroyed) return;
+                    t += k.dt() * speed;
+                    const y = wallBaseY + Math.sin(t + phase) * wallAmp - wallH / 2;
+                    wall.pos.y = y;
+                });
+            });
             const door = createDoor("hallway1.door.west", [WALL, roomH / 2 - 32], ROOM_IDS.MAIN);
             objects.push(door, door.frame, door.handle);
 
