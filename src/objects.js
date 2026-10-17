@@ -138,6 +138,14 @@ export function createLightDirector(k, id, lamp, lighting, player) {
     const APERTURE = 40 * Math.PI / 180; // angular size of the opening
     const ROT_SPEED = 2.5;   // radians per second while pushed
     const RING_COLOR = [40, 40, 60];
+    // Handle: a thin straight grey bar that sticks out of the back of the ring
+    // (opposite the aperture). The player pushes the handle to spin the ring;
+    // pushing the ring body itself does nothing.
+    const HANDLE_LEN = 30;
+    const HANDLE_WIDE = 4;
+    const HANDLE_COLOR = [128, 128, 128];
+    // Local x of the handle's center (aperture faces +x, so the back is -x).
+    const HANDLE_CENTER_X = -(R_OUT + HANDLE_LEN / 2);
 
     // Rendered center of the lamp.
     const sx = lamp.scale ? lamp.scale.x : 1;
@@ -197,10 +205,27 @@ export function createLightDirector(k, id, lamp, lighting, player) {
         k.anchor("center"),
         k.rotate(0),
         k.area(),
+        // Solid: the player cannot walk through the housing.
+        k.body({ isStatic: true }),
         "interactable",
         id,
         `room:${room}`,
         { interact: () => {} },
+    ]);
+
+    // Handle: a thin straight grey bar sticking out of the back of the ring
+    // (opposite the aperture). It is a separate solid entity that rotates with
+    // the housing. The player pushes the handle to spin the ring; pushing the
+    // ring body itself does nothing.
+    const handle = k.add([
+        k.rect(HANDLE_LEN, HANDLE_WIDE),
+        k.pos(cx + HANDLE_CENTER_X, cy),
+        k.anchor("center"),
+        k.rotate(0),
+        k.color(HANDLE_COLOR[0], HANDLE_COLOR[1], HANDLE_COLOR[2]),
+        k.area(),
+        k.body({ isStatic: true }),
+        `room:${room}`,
     ]);
 
     // Tell the lighting system this caster is an annular sector, not a box.
@@ -208,10 +233,16 @@ export function createLightDirector(k, id, lamp, lighting, player) {
     // bounds in world space (updated as the housing rotates).
     housing.annularSector = { cx, cy, rIn: R_IN, rOut: R_OUT, a0, a1 };
 
-    // Rotate the housing and keep the annularSector's world-space angles in
-    // sync so the shadow geometry stays correct.
+    // Rotate the housing and its handle, and keep the annularSector's
+    // world-space angles in sync so the shadow geometry stays correct.
     function place() {
-        housing.angle = (angle * 180) / Math.PI;
+        const deg = (angle * 180) / Math.PI;
+        housing.angle = deg;
+        // The handle's center orbits the ring center at radius |HANDLE_CENTER_X|
+        // and points radially outward (same orientation as the housing).
+        handle.pos.x = cx + HANDLE_CENTER_X * Math.cos(angle);
+        handle.pos.y = cy + HANDLE_CENTER_X * Math.sin(angle);
+        handle.angle = deg;
         housing.annularSector.a0 = a0 + angle;
         housing.annularSector.a1 = a1 + angle;
     }
@@ -222,9 +253,9 @@ export function createLightDirector(k, id, lamp, lighting, player) {
             update.cancel(); // housing is gone; stop tracking it
             return;
         }
-        // Pushing: while the player overlaps the housing, spin it toward
-        // the player's position so the aperture follows them.
-        if (player && !player.destroyed && player.isColliding(housing)) {
+        // Pushing: the ring only spins while the player is pushing the handle.
+        // Pushing the ring body itself does nothing.
+        if (player && !player.destroyed && player.isColliding(handle)) {
             const playerAngle = Math.atan2(player.pos.y - cy, player.pos.x - cx);
             let diff = playerAngle - angle;
             while (diff > Math.PI) diff -= 2 * Math.PI;
@@ -235,7 +266,7 @@ export function createLightDirector(k, id, lamp, lighting, player) {
         }
     });
 
-    return [housing];
+    return [housing, handle];
 }
 
 // Creates a stat-modifier object that toggles the player's speed.
