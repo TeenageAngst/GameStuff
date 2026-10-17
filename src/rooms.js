@@ -18,6 +18,7 @@ const FADE_TIME = 0.4; // seconds per half of the transition (out and in)
 export const ROOM_IDS = {
     MAIN: "main",
     EMPTY: "empty",
+    HALLWAY1: "hallway1",
 };
 
 // Data-driven room registry. Each entry defines:
@@ -26,6 +27,8 @@ export const ROOM_IDS = {
 //   playerPos – (W, H) => [x, y]; where to place the player on entry
 const ROOMS = {
     [ROOM_IDS.MAIN]: {
+        width: null, // Use default W
+        height: null, // Use default H
         darkness: 0.65,
         build(k, ctx) {
             const { W, H, player, lighting, ui, createDoor } = ctx;
@@ -33,8 +36,12 @@ const ROOMS = {
             objects.push(createNarrative(k, "main.narrative.air", [200, 200], ui));
             objects.push(createLight(k, "main.environment.light", [400, 200], lighting));
             objects.push(createStat(k, "main.stat.speed", [600, 200], player));
-            const door = createDoor("main.door.south", [W / 2 - 24, H - 88], ROOM_IDS.EMPTY);
-            objects.push(door, door.frame, door.handle);
+            const doorSouth = createDoor("main.door.south", [W / 2 - 24, H - 88], ROOM_IDS.EMPTY);
+            objects.push(doorSouth, doorSouth.frame, doorSouth.handle);
+
+            const doorEast = createDoor("main.door.east", [W - 48, H / 2 - 32], ROOM_IDS.HALLWAY1);
+            objects.push(doorEast, doorEast.frame, doorEast.handle);
+
             return objects;
         },
         playerPos(W, H) {
@@ -43,6 +50,8 @@ const ROOMS = {
         },
     },
     [ROOM_IDS.EMPTY]: {
+        width: null, // Use default W
+        height: null, // Use default H
         darkness: 0.7,
         build(k, ctx) {
             const { W, H, createDoor, lighting, player } = ctx;
@@ -87,6 +96,58 @@ const ROOMS = {
         playerPos(W, H) {
             // Enter just below the north door (door spans y=24..88).
             return [W / 2, 140];
+        },
+    },
+    [ROOM_IDS.HALLWAY1]: {
+        width: 4000, // 800 * 5
+        height: 300, // 600 * 0.5
+        darkness: 0.7,
+        build(k, ctx) {
+            const { W, H, createDoor, lighting, player } = ctx;
+            const roomW = 4000;
+            const roomH = 300;
+            const objects = [];
+            const WALL = 24;
+
+            // Floor
+            objects.push(k.add([
+                k.rect(roomW - WALL * 2, roomH - WALL * 2),
+                k.pos(WALL, WALL),
+                k.color(180, 170, 160),
+                k.z(-50),
+            ]));
+
+            // Walls
+            const wallColor = [80, 70, 60];
+            objects.push(k.add([k.rect(roomW, WALL), k.pos(0, 0), k.color(wallColor), k.z(-40)]));
+            objects.push(k.add([k.rect(roomW, WALL), k.pos(0, roomH - WALL), k.color(wallColor), k.z(-40)]));
+            objects.push(k.add([k.rect(WALL, roomH), k.pos(0, 0), k.color(wallColor), k.z(-40)]));
+            objects.push(k.add([k.rect(WALL, roomH), k.pos(roomW - WALL, 0), k.color(wallColor), k.z(-40)]));
+
+            // Alternating lights
+            const colors = [
+                [255, 100, 100], [100, 255, 100], [100, 100, 255],
+                [255, 255, 100], [255, 100, 255], [100, 255, 255]
+            ];
+            const lightSpacing = 600;
+            for (let i = 0; i < 7; i++) {
+                const x = 300 + i * lightSpacing;
+                const y = roomH / 2;
+                const color = colors[i % colors.length];
+                const sideOffset = (i % 2 === 0) ? -40 : 40;
+                const light = createLight(k, `hallway1.light.${i}`, [x, y + sideOffset], lighting, color);
+                light.z = 1; // Ensure lights are visible above the floor
+                objects.push(light);
+            }
+
+            // Door back to main
+            const door = createDoor("hallway1.door.west", [WALL, roomH / 2 - 32], ROOM_IDS.MAIN);
+            objects.push(door, door.frame, door.handle);
+
+            return objects;
+        },
+        playerPos(W, H) {
+            return [150, 150];
         },
     },
 };
@@ -203,31 +264,44 @@ export function createRooms(k, player, lighting, ui) {
     }
 
     k.onUpdate(() => {
-        if (!transitioning) return;
-        const step = k.dt() / FADE_TIME;
-        if (fadeTarget === 1) {
-            // Fading out.
-            fade.opacity = Math.min(1, fade.opacity + step);
-            if (fade.opacity >= 1) {
-                // Fully hidden: swap the room.
-                destroyRoom();
-                buildRoom(targetRoom);
-                lighting.setDarkness(ROOMS[targetRoom].darkness);
-                currentRoom = targetRoom;
-                placePlayer(targetRoom);
-                fadeTarget = 0;
-            }
-        } else {
-            // Fading in.
-            fade.opacity = Math.max(0, fade.opacity - step);
-            if (fade.opacity <= 0) {
-                transitioning = false;
-                player.frozen = false;
-                if (pendingMessage) {
-                    ui.show(pendingMessage);
-                    pendingMessage = null;
+        if (transitioning) {
+            const step = k.dt() / FADE_TIME;
+            if (fadeTarget === 1) {
+                // Fading out.
+                fade.opacity = Math.min(1, fade.opacity + step);
+                if (fade.opacity >= 1) {
+                    // Fully hidden: swap the room.
+                    destroyRoom();
+                    buildRoom(targetRoom);
+                    lighting.setDarkness(ROOMS[targetRoom].darkness);
+                    currentRoom = targetRoom;
+                    placePlayer(targetRoom);
+                    fadeTarget = 0;
+                }
+            } else {
+                // Fading in.
+                fade.opacity = Math.max(0, fade.opacity - step);
+                if (fade.opacity <= 0) {
+                    transitioning = false;
+                    player.frozen = false;
+                    if (pendingMessage) {
+                        ui.show(pendingMessage);
+                        pendingMessage = null;
+                    }
                 }
             }
+        } else {
+            // Camera follows player, clamped to room boundaries.
+            const room = ROOMS[currentRoom];
+            const roomW = room.width || W;
+            const roomH = room.height || H;
+
+            // Center camera on player, but clamp to room edges.
+            const camX = Math.max(W / 2, Math.min(roomW - W / 2, player.pos.x));
+            const camY = Math.max(H / 2, Math.min(roomH - H / 2, player.pos.y));
+            
+            // Use the standard Kaplay camPos function
+            k.camPos(camX, camY);
         }
     });
 
@@ -239,6 +313,10 @@ export function createRooms(k, player, lighting, ui) {
     return {
         get currentRoom() {
             return currentRoom;
+        },
+        get currentRoomDimensions() {
+            const room = ROOMS[currentRoom];
+            return [room.width || W, room.height || H];
         },
         isTransitioning: () => transitioning,
     };

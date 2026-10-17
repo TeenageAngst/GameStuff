@@ -34,17 +34,18 @@ export function createPlayer(k) {
         // Boundary collision
         const halfW = 16;
         const halfH = 16;
+        const [roomW, roomH] = window.rooms.currentRoomDimensions;
         if (player.pos.x < halfW) {
             player.pos.x = halfW;
         }
-        if (player.pos.x > k.width() - halfW) {
-            player.pos.x = k.width() - halfW;
+        if (player.pos.x > roomW - halfW) {
+            player.pos.x = roomW - halfW;
         }
         if (player.pos.y < halfH) {
             player.pos.y = halfH;
         }
-        if (player.pos.y > k.height() - halfH) {
-            player.pos.y = k.height() - halfH;
+        if (player.pos.y > roomH - halfH) {
+            player.pos.y = roomH - halfH;
         }
     });
 

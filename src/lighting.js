@@ -200,6 +200,18 @@ export function createLighting(k) {
         gctx.globalCompositeOperation = "source-over";
         gctx.clearRect(0, 0, W, H);
 
+        // The lighting overlay is a separate canvas. To align world coordinates
+        // to this canvas, we need the world position of the canvas's top-left corner.
+        // In this Kaplay build the camera position is read via k.camPos() (there is
+        // no k.cam object). The top-left of the viewport is
+        // (camPos.x - W/2, camPos.y - H/2).
+        //
+        // If the camera is clamped to the room bounds, k.camPos() still returns the
+        // center of the viewport in world space, so the offset stays correct.
+        const camPos = k.camPos();
+        const offsetX = camPos ? camPos.x - W / 2 : 0;
+        const offsetY = camPos ? camPos.y - H / 2 : 0;
+
         // 3. Carve a smooth radial hole for each active light, minus its
         //    shadows. For each light we compose its illumination on the temp
         //    canvas, then *erase* the shadow polygons out of it (subtractive),
@@ -215,17 +227,19 @@ export function createLighting(k) {
         for (const light of lights) {
             if (light.intensity <= 0) continue;
             const { x: lx, y: ly } = lightCenter(light);
+            const slx = lx - offsetX;
+            const sly = ly - offsetY;
 
             // 3a. Draw this light's radial illumination onto the temp canvas.
             tctx.clearRect(0, 0, W, H);
             tctx.globalCompositeOperation = "source-over";
-            const grad = tctx.createRadialGradient(lx, ly, 0, lx, ly, LIGHT_RADIUS);
+            const grad = tctx.createRadialGradient(slx, sly, 0, slx, sly, LIGHT_RADIUS);
             grad.addColorStop(0, `rgba(0, 0, 0, ${light.intensity})`);
             grad.addColorStop(0.6, `rgba(0, 0, 0, ${light.intensity * 0.55})`);
             grad.addColorStop(1, "rgba(0, 0, 0, 0)");
             tctx.fillStyle = grad;
             tctx.beginPath();
-            tctx.arc(lx, ly, LIGHT_RADIUS, 0, Math.PI * 2);
+            tctx.arc(slx, sly, LIGHT_RADIUS, 0, Math.PI * 2);
             tctx.fill();
 
             // 3b. Erase each shadow polygon out of the light's illumination.
@@ -279,16 +293,23 @@ export function createLighting(k) {
                 // (fading with distance).
                 const effectiveFarDist = isSectorWedge ? LIGHT_RADIUS : farDist;
                 const fadeEnd = effectiveFarDist + SHADOW_FADE * LIGHT_RADIUS;
-                const sgrad = tctx.createRadialGradient(lx, ly, 0, lx, ly, Math.max(fadeEnd, 1));
+                // The gradient must be centered on the light's *screen* position
+                // (slx, sly), not its world position (lx, ly): the shadow polygon
+                // below is drawn in screen space (poly - offset), so a world-space
+                // gradient center would be shifted by (offsetX, offsetY) and fall
+                // outside the polygon whenever the camera is not at the origin.
+                // That is why shadows rendered in the empty room (camera clamped to
+                // the origin, offset = 0) but vanished in the long hallway.
+                const sgrad = tctx.createRadialGradient(slx, sly, 0, slx, sly, Math.max(fadeEnd, 1));
                 const peak = light.intensity;
                 sgrad.addColorStop(0, `rgba(0, 0, 0, ${peak})`);
                 sgrad.addColorStop(Math.min(1, effectiveFarDist / fadeEnd), `rgba(0, 0, 0, ${peak})`);
                 sgrad.addColorStop(1, "rgba(0, 0, 0, 0)");
                 tctx.fillStyle = sgrad;
                 tctx.beginPath();
-                tctx.moveTo(poly[0].x, poly[0].y);
+                tctx.moveTo(poly[0].x - offsetX, poly[0].y - offsetY);
                 for (let i = 1; i < poly.length; i++) {
-                    tctx.lineTo(poly[i].x, poly[i].y);
+                    tctx.lineTo(poly[i].x - offsetX, poly[i].y - offsetY);
                 }
                 tctx.closePath();
                 tctx.fill();
@@ -325,13 +346,15 @@ export function createLighting(k) {
         for (const light of lights) {
             if (light.intensity <= 0) continue;
             const { x, y } = lightCenter(light);
+            const sx = x - offsetX;
+            const sy = y - offsetY;
             const [cr, cg, cb] = lightColor(light);
-            const core = octx.createRadialGradient(x, y, 0, x, y, CORE_RADIUS);
+            const core = octx.createRadialGradient(sx, sy, 0, sx, sy, CORE_RADIUS);
             core.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, ${0.9 * light.intensity})`);
             core.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0)`);
             octx.fillStyle = core;
             octx.beginPath();
-            octx.arc(x, y, CORE_RADIUS, 0, Math.PI * 2);
+            octx.arc(sx, sy, CORE_RADIUS, 0, Math.PI * 2);
             octx.fill();
         }
         octx.globalCompositeOperation = "source-over";
