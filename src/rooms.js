@@ -124,16 +124,26 @@ const ROOMS = {
             objects.push(k.add([k.rect(WALL, roomH), k.pos(0, 0), k.color(wallColor), k.z(-40)]));
             objects.push(k.add([k.rect(WALL, roomH), k.pos(roomW - WALL, 0), k.color(wallColor), k.z(-40)]));
 
-            // Alternating lights
+            // Alternating lights, spaced so their glow circles (440px diameter)
+            // somewhat overlap. 11 lamps × 320px spacing fills the hallway.
             const colors = [
-                [255, 100, 100], [100, 255, 100], [100, 100, 255],
-                [255, 255, 100], [255, 100, 255], [100, 255, 255]
+                [255, 80, 80],    // red
+                [255, 160, 60],   // orange
+                [255, 230, 80],   // yellow
+                [160, 255, 80],   // lime
+                [80, 255, 120],   // green
+                [80, 255, 200],   // teal
+                [80, 220, 255],   // cyan
+                [100, 160, 255],  // sky
+                [120, 100, 255],  // blue
+                [200, 100, 255],  // purple
+                [255, 100, 200],  // pink
             ];
-            const lightSpacing = 600;
-            for (let i = 0; i < 7; i++) {
+            const lightSpacing = 320;
+            for (let i = 0; i < colors.length; i++) {
                 const x = 300 + i * lightSpacing;
                 const y = roomH / 2;
-                const color = colors[i % colors.length];
+                const color = colors[i];
                 const sideOffset = (i % 2 === 0) ? -40 : 40;
                 const light = createLight(k, `hallway1.light.${i}`, [x, y + sideOffset], lighting, color);
                 light.z = 1; // Ensure lights are visible above the floor
