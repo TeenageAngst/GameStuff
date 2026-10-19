@@ -20,6 +20,7 @@ window.k = k;
 // k.sprite() has the image available.
 k.loadSprite("player.png", "assets/player.png");
 k.loadSprite("lamp.png", "assets/lamp.png");
+k.loadSprite("wisp.png", "assets/wisp.png");
 k.onLoad(() => {
     const ui = createUI(k);
     window.ui = ui;

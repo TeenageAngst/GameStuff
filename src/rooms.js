@@ -1,4 +1,4 @@
-import { createNarrative, createLight, createStat, createLightDirector, createLightSwitch } from './objects.js';
+import { createNarrative, createLight, createStat, createLightDirector, createLightSwitch, createEnemy } from './objects.js';
 import { TEXTS } from './texts.js';
 
 // Room manager: builds rooms from a data-driven registry, with fade transitions.
@@ -184,6 +184,54 @@ const ROOMS = {
             });
             const door = createDoor("hallway1.door.west", [WALL, roomH / 2 - 32], ROOM_IDS.MAIN);
             objects.push(door, door.frame, door.handle);
+
+            // Shadow wisps: patrolling enemies drifting between the piston
+            // walls. They don't block light (they're made of shadow) — the
+            // player has to time crossings around them.
+            const wispDefs = [
+                { x: 500, xRange: 140, speed: 0.70, phase: 0.0 },
+                { x: 1150, xRange: 160, speed: 0.85, phase: 2.1 },
+                { x: 1800, xRange: 150, speed: 0.65, phase: 4.2 },
+                { x: 2450, xRange: 160, speed: 0.90, phase: 1.2 },
+                { x: 3100, xRange: 150, speed: 0.75, phase: 3.3 },
+            ];
+            const enemies = wispDefs.map((def, i) =>
+                createEnemy(k, `hallway1.enemy.wisp${i}`, player, {
+                    x: def.x,
+                    y: roomH / 2,
+                    xRange: def.xRange,
+                    yAmp: 55,
+                    speed: def.speed,
+                    phase: def.phase,
+                })
+            );
+            objects.push(...enemies);
+
+            // Shared enemy-hit feedback: decay the knockback velocity
+            // (applied via move() so walls still block it) and blink the
+            // player during the invulnerability window. Cancelled once the
+            // room's enemies are gone (room transition).
+            const knockUpdate = k.onUpdate(() => {
+                if (enemies.every((e) => e.destroyed)) {
+                    knockUpdate.cancel();
+                    return;
+                }
+                const dt = k.dt();
+                if ((player.knockVX || player.knockVY) && !player.frozen) {
+                    // move() takes a velocity (px/s) and scales by dt itself.
+                    player.move(player.knockVX, player.knockVY);
+                    const decay = Math.exp(-5 * dt);
+                    player.knockVX *= decay;
+                    player.knockVY *= decay;
+                    if (Math.hypot(player.knockVX, player.knockVY) < 8) {
+                        player.knockVX = 0;
+                        player.knockVY = 0;
+                    }
+                }
+                player.opacity = (player.nextVulnAt && k.time() < player.nextVulnAt)
+                    ? (Math.floor(k.time() * 14) % 2 === 0 ? 0.35 : 1)
+                    : 1;
+            });
 
             return objects;
         },

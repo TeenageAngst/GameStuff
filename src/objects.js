@@ -238,6 +238,70 @@ export function createLightDirector(k, id, lamp, lighting, player) {
     return [housing];
 }
 
+// Creates a patrolling shadow-wisp enemy. It drifts along a sinusoidal
+// path; touching it knocks the player back and grants brief invulnerability.
+// Enemies are NOT "interactable": they can't be E-prompted, and they don't
+// block light (they're made of shadow).
+//
+// `opts`: x, y (patrol center), xRange (horizontal half-extent),
+// yAmp (vertical bob amplitude), speed (rad/s), phase, scale.
+export function createEnemy(k, id, player, opts = {}) {
+    const {
+        x = 400,
+        y = 150,
+        xRange = 150,
+        yAmp = 50,
+        speed = 0.7,
+        phase = 0,
+        scale = 0.4,
+    } = opts;
+    const room = id.split('.')[0];
+    const enemy = k.add([
+        k.sprite("wisp.png"),
+        k.scale(scale),
+        k.pos(x, y),
+        k.anchor("center"),
+        k.area(),
+        k.z(2),
+        "enemy",
+        id,
+        `room:${room}`,
+    ]);
+
+    let t = phase;
+    const update = k.onUpdate(() => {
+        if (enemy.destroyed) {
+            update.cancel();
+            return;
+        }
+        t += k.dt() * speed;
+        enemy.pos.x = x + Math.sin(t) * xRange;
+        enemy.pos.y = y + Math.sin(t * 1.6 + phase) * yAmp;
+        // Knockback on touch, with an invulnerability window so one
+        // touch doesn't chain-stun the player.
+        if (player && !player.destroyed && enemy.isColliding(player)) {
+            const now = k.time();
+            if (now >= (player.nextVulnAt || 0)) {
+                let dx = player.pos.x - enemy.pos.x;
+                let dy = player.pos.y - enemy.pos.y;
+                // Degenerate case: dead-center overlap gives no direction;
+                // fall back to shoving along the enemy's patrol direction.
+                if (Math.hypot(dx, dy) < 1) {
+                    dx = Math.cos(t) >= 0 ? 1 : -1;
+                    dy = -0.3;
+                }
+                const len = Math.hypot(dx, dy);
+                const POWER = 380;
+                player.knockVX = (dx / len) * POWER;
+                player.knockVY = (dy / len) * POWER;
+                player.nextVulnAt = now + 1.2;
+            }
+        }
+    });
+
+    return enemy;
+}
+
 // Creates a stat-modifier object that toggles the player's speed.
 export function createStat(k, id, pos, player) {
     if (!player || typeof player.speed === 'undefined') {
