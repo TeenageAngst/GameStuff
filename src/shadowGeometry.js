@@ -27,7 +27,16 @@ export function computeShadowPolygon(lx, ly, box, maxDist = SHADOW_MAX_DIST, ang
     const dx = bcx - lx;
     const dy = bcy - ly;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < 0.001 || dist > maxDist) return null;
+    // Cull on the nearest point of the box, not its center: a huge box
+    // (like a 4000px hallway wall) can be far at its center yet right next
+    // to the light at its edge. Culling on the center lets light leak past
+    // the near portions of long walls.
+    const nx = Math.max(left, Math.min(lx, right));
+    const ny = Math.max(top, Math.min(ly, bottom));
+    const ndx = lx - nx;
+    const ndy = ly - ny;
+    const nearDist0 = Math.sqrt(ndx * ndx + ndy * ndy);
+    if (nearDist0 < 0.001 || nearDist0 > maxDist) return null;
     const D = { x: dx / dist, y: dy / dist }; // unit vector light -> box center
 
     // Rotate a point (or vector) around the box center by `angle` (radians).
@@ -121,12 +130,18 @@ export function computeShadowPolygon(lx, ly, box, maxDist = SHADOW_MAX_DIST, ang
     }
 
     // Project a point outward from the light to the shadow boundary.
+    // The far cap must lie beyond the caster along the ray. If the corner
+    // itself is past maxDist, extend past the corner instead of collapsing
+    // inward to maxDist — an inward cap would paint shadow between the
+    // light and the caster, darkening lit ground (this bit the 4000px
+    // hallway walls, whose far corners are ~2000px from the lamps).
     function project(pt) {
         const vx = pt.x - lx;
         const vy = pt.y - ly;
         const len = Math.sqrt(vx * vx + vy * vy);
         if (len < 0.001) return { x: pt.x, y: pt.y };
-        const t = maxDist / len;
+        const target = len > maxDist ? len + maxDist : maxDist;
+        const t = target / len;
         return { x: lx + vx * t, y: ly + vy * t };
     }
 
