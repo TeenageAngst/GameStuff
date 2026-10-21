@@ -111,10 +111,10 @@ export function createLighting(k) {
     //
     // For each light we compute a "shadow polygon" for every shadow-casting
     // object: the region behind the object (relative to the light) that the
-    // light cannot reach. The polygon is built from the object's two corners
-    // that face the light, each projected outward to the edge of the light's
-    // radius. The polygon is then re-darkened on the overlay, so the lit
-    // hole is carved out except where a shadow falls.
+    // light cannot reach. The polygon runs from the object's far-side
+    // silhouette out along the two tangent rays, capped by an arc at the
+    // shadow distance. The polygon is then re-darkened on the overlay, so
+    // the lit hole is carved out except where a shadow falls.
     //
     // Shadow casters are registered via registerShadowCaster() (the player
     // and interactable objects). They are kept in a Set so destroyed objects

@@ -7,7 +7,9 @@
 //   - Starts at the box's far-side silhouette (the part of the box perimeter
 //     facing away from the light), so the caster's body stays lit.
 //   - Extends outward, bounded by the two tangent rays from the light to
-//     the box (the rays that just graze the box).
+//     the box (the rays that just graze the box), capped by an arc at
+//     maxDist. The arc (rather than a straight chord) keeps wide cones
+//     covered all the way out.
 //
 // The construction is continuous for all light angles: as the light
 // direction rotates, the far-side silhouette and the tangent corners change
@@ -24,9 +26,7 @@ export function computeShadowPolygon(lx, ly, box, maxDist = SHADOW_MAX_DIST, ang
     const bottom = box.y + box.h;
     const bcx = (left + right) / 2;
     const bcy = (top + bottom) / 2;
-    const dx = bcx - lx;
-    const dy = bcy - ly;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+    const dist = Math.hypot(bcx - lx, bcy - ly);
     // Cull on the nearest point of the box, not its center: a huge box
     // (like a 4000px hallway wall) can be far at its center yet right next
     // to the light at its edge. Culling on the center lets light leak past
@@ -37,7 +37,7 @@ export function computeShadowPolygon(lx, ly, box, maxDist = SHADOW_MAX_DIST, ang
     const ndy = ly - ny;
     const nearDist0 = Math.sqrt(ndx * ndx + ndy * ndy);
     if (nearDist0 < 0.001 || nearDist0 > maxDist) return null;
-    const D = { x: dx / dist, y: dy / dist }; // unit vector light -> box center
+    const D = { x: (bcx - lx) / dist, y: (bcy - ly) / dist }; // unit vector light -> box center
 
     // Rotate a point (or vector) around the box center by `angle` (radians).
     // When angle is 0 this is the identity, so axis-aligned boxes behave
@@ -129,33 +129,29 @@ export function computeShadowPolygon(lx, ly, box, maxDist = SHADOW_MAX_DIST, ang
         silhouette = [best.a, best.b];
     }
 
-    // Project a point outward from the light to the shadow boundary.
-    // The far cap must lie beyond the caster along the ray. If the corner
-    // itself is past maxDist, extend past the corner instead of collapsing
-    // inward to maxDist — an inward cap would paint shadow between the
-    // light and the caster, darkening lit ground (this bit the 4000px
-    // hallway walls, whose far corners are ~2000px from the lamps).
-    function project(pt) {
-        const vx = pt.x - lx;
-        const vy = pt.y - ly;
-        const len = Math.sqrt(vx * vx + vy * vy);
-        if (len < 0.001) return { x: pt.x, y: pt.y };
-        const target = len > maxDist ? len + maxDist : maxDist;
-        const t = target / len;
-        return { x: lx + vx * t, y: ly + vy * t };
-    }
-
-    // The shadow polygon: silhouette[0] -> silhouette[1] -> ... ->
-    // silhouette[n] -> project(tanNear2) -> project(tanNear1).
+    // The shadow polygon: silhouette[0] -> ... -> silhouette[n], then the
+    // far boundary back around.
     //
     // The near boundary is the far-side silhouette (so the caster's body
     // stays lit). The two sides of the shadow cone follow the tangent rays
     // from the light through the tangent corners (tanNear1 and tanNear2).
-    // The far boundary connects the two projected tangent corners.
-    const p1 = project(tanNear1);
-    const p2 = project(tanNear2);
-
-    const poly = [...silhouette, p2, p1];
+    //
+    // The far boundary is an ARC at maxDist between the two tangent rays,
+    // sampled every few degrees. A straight chord between the ray endpoints
+    // cuts across wide cones and leaves part of the true shadow uncovered —
+    // for the 4000px hallway walls (a ~170° cone) the chord passed just
+    // below the wall while the light reached much farther, leaking color
+    // past the bottom wall. The arc follows the cone instead.
+    const abs1 = baseAngle + minRel; // absolute angle of tanNear1's ray
+    const abs2 = baseAngle + maxRel; // absolute angle of tanNear2's ray
+    const coneWidth = abs2 - abs1; // in (0, 2π]; passes through baseAngle
+    const ARC_STEP = Math.PI / 18; // 10° per segment
+    const arcSteps = Math.max(1, Math.ceil(coneWidth / ARC_STEP));
+    const poly = [...silhouette];
+    for (let k = 0; k <= arcSteps; k++) {
+        const a = abs2 - (coneWidth * k) / arcSteps; // max angle down to min
+        poly.push({ x: lx + maxDist * Math.cos(a), y: ly + maxDist * Math.sin(a) });
+    }
 
     // Near/far distances from the light to the box (for the gradient).
     const nearDist = dist - Math.max(box.w, box.h) / 2;
