@@ -279,6 +279,10 @@ export function createRooms(k, player, lighting, ui) {
             `room:${room}`,
             {
                 isDoor: true,
+                // The room this door leads to — used on arrival to spawn
+                // the player at the matching door instead of the room's
+                // default entry point.
+                targetRoom: target,
                 interact: () => {
                     transitionTo(target, arrivalMessage);
                 },
@@ -335,10 +339,38 @@ export function createRooms(k, player, lighting, ui) {
         roomObjects = [];
     }
 
-    function placePlayer(roomId) {
+    function placePlayer(roomId, sourceRoom) {
         // This kaplay build exposes pos as a plain {x, y} object (no .set()),
         // so assign the components directly (matches how player.js clamps pos).
-        const [x, y] = ROOMS[roomId].playerPos(W, H);
+        let [x, y] = ROOMS[roomId].playerPos(W, H);
+        if (sourceRoom) {
+            // Spawn just inside the door that leads back to the room we
+            // came from, so walking through a door and back returns you
+            // to the door you used. The offset goes inward along the
+            // dominant axis (east/west doors shift x, north/south shift y).
+            // Falls back to the room's default entry point when no
+            // matching door exists.
+            const room = ROOMS[roomId];
+            const roomW = room.width || W;
+            const roomH = room.height || H;
+            const door = roomObjects.find(
+                (o) => o.isDoor && o.targetRoom === sourceRoom
+            );
+            if (door) {
+                // Door sprite is 48x64 at a topleft-anchored pos.
+                const cx = door.pos.x + 24;
+                const cy = door.pos.y + 32;
+                const dx = cx - roomW / 2;
+                const dy = cy - roomH / 2;
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    x = cx + (dx < 0 ? 96 : -96);
+                    y = cy;
+                } else {
+                    x = cx;
+                    y = cy + (dy < 0 ? 96 : -96);
+                }
+            }
+        }
         player.pos.x = x;
         player.pos.y = y;
     }
@@ -360,11 +392,12 @@ export function createRooms(k, player, lighting, ui) {
                 fade.opacity = Math.min(1, fade.opacity + step);
                 if (fade.opacity >= 1) {
                     // Fully hidden: swap the room.
+                    const sourceRoom = currentRoom;
                     destroyRoom();
                     buildRoom(targetRoom);
                     lighting.setDarkness(ROOMS[targetRoom].darkness);
                     currentRoom = targetRoom;
-                    placePlayer(targetRoom);
+                    placePlayer(targetRoom, sourceRoom);
                     fadeTarget = 0;
                 }
             } else {
