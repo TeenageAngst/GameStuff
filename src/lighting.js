@@ -111,10 +111,10 @@ export function createLighting(k) {
     //
     // For each light we compute a "shadow polygon" for every shadow-casting
     // object: the region behind the object (relative to the light) that the
-    // light cannot reach. The polygon is built from the object's two corners
-    // that face the light, each projected outward to the edge of the light's
-    // radius. The polygon is then re-darkened on the overlay, so the lit
-    // hole is carved out except where a shadow falls.
+    // light cannot reach. The polygon runs from the object's far-side
+    // silhouette out along the two tangent rays, capped by an arc at the
+    // shadow distance. The polygon is then re-darkened on the overlay, so
+    // the lit hole is carved out except where a shadow falls.
     //
     // Shadow casters are registered via registerShadowCaster() (the player
     // and interactable objects). They are kept in a Set so destroyed objects
@@ -172,6 +172,91 @@ export function createLighting(k) {
     function shadowPolygon(lx, ly, box) {
         return computeShadowPolygon(lx, ly, box, SHADOW_MAX_DIST, box.angle || 0);
     }
+
+    // A caster's shadow can only affect a light's illumination where the
+    // light actually shines (LIGHT_RADIUS), plus the blur margin. Pairs
+    // farther apart than this are skipped outright — in a big room this
+    // culls most light×caster pairs every frame.
+    const SHADOW_CULL_DIST = LIGHT_RADIUS + SHADOW_SOFT;
+
+    // Erase one caster's shadow from ctx (which must already be in
+    // "destination-out" mode). (wx, wy) is the light's world position;
+    // toLocal maps world coords to ctx coords; peak scales the erase
+    // strength (1 = full). Skips the pair when the caster is too far from
+    // the light for its shadow to reach the lit disc.
+    function eraseShadow(ctx, wx, wy, caster, toLocal, peak) {
+        let result;
+        let isSectorWedge = false;
+        if (caster.annularSector) {
+            // Annular-sector caster (e.g. the light director's ring).
+            // The ring blocks ALL light sources, not just the one
+            // inside it. computeAnnularSectorShadow dispatches on the
+            // light's position:
+            // - Light at the ring's center (dist < rIn): exact angular
+            //   wedge of the solid part [a0, a1]; no light leaks
+            //   between pieces. Hard shadow (no fade) across the full
+            //   light radius — the ring is a solid barrier.
+            // - Exterior light, aperture facing away: tangent-ray disc
+            //   shadow covering the interior plus the region behind.
+            // - Exterior light, aperture facing it: as above, with a
+            //   notch so the light shaft enters through the aperture.
+            // See computeAnnularSectorShadow for the full geometry.
+            const sec = caster.annularSector;
+            const distToCenter = Math.hypot(wx - sec.cx, wy - sec.cy);
+            if (distToCenter - sec.rOut > SHADOW_CULL_DIST) return;
+            result = computeAnnularSectorShadow(wx, wy, sec, SHADOW_MAX_DIST);
+            isSectorWedge = distToCenter < sec.rIn;
+        } else {
+            const box = casterBox(caster, SHADOW_MARGIN);
+            const nx = Math.max(box.x, Math.min(wx, box.x + box.w));
+            const ny = Math.max(box.y, Math.min(wy, box.y + box.h));
+            if (Math.hypot(wx - nx, wy - ny) > SHADOW_CULL_DIST) return;
+            result = shadowPolygon(wx, wy, box);
+        }
+        if (!result) return;
+        const { poly, farDist } = result;
+        // Radial gradient centered on the light: fully opaque (full
+        // erase) at the object's far edge, fading to transparent at
+        // the edge of the light's radius. This makes the shadow
+        // soften with distance.
+        //
+        // For the exact sector wedge (a light at the ring's center),
+        // the shadow must fully block the light throughout the entire
+        // light radius — the ring is a solid barrier, not a soft
+        // occluder. Use LIGHT_RADIUS as the "far edge" so the gradient
+        // stays at full opacity across the whole illuminated area.
+        // For a box shadow (external light), use the normal gradient
+        // (fading with distance).
+        const effectiveFarDist = isSectorWedge ? LIGHT_RADIUS : farDist;
+        const fadeEnd = effectiveFarDist + SHADOW_FADE * LIGHT_RADIUS;
+        // The gradient is centered on the light in ctx's own coordinates
+        // (via toLocal): the shadow polygon below is drawn through the
+        // same mapping, so a world-space gradient center would be shifted
+        // whenever the mapping isn't the identity. (An older version
+        // centered it in world space while drawing in screen space, which
+        // is why shadows rendered in the empty room — camera at the
+        // origin — but vanished in the long hallway.)
+        const c = toLocal({ x: wx, y: wy });
+        const sgrad = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, Math.max(fadeEnd, 1));
+        sgrad.addColorStop(0, `rgba(0, 0, 0, ${peak})`);
+        sgrad.addColorStop(Math.min(1, effectiveFarDist / fadeEnd), `rgba(0, 0, 0, ${peak})`);
+        sgrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+        ctx.fillStyle = sgrad;
+        ctx.beginPath();
+        const p0 = toLocal(poly[0]);
+        ctx.moveTo(p0.x, p0.y);
+        for (let i = 1; i < poly.length; i++) {
+            const p = toLocal(poly[i]);
+            ctx.lineTo(p.x, p.y);
+        }
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // Half-size of a light's static-shadow canvas: it only needs to cover
+    // the light's influence disc (LIGHT_RADIUS) plus the blur margin, in
+    // light-local coordinates (origin at the light). Camera-independent.
+    const STATIC_R = LIGHT_RADIUS + SHADOW_SOFT;
     // Current darkness level (0 = fully lit, 1 = fully dark). Defaults to the
     // DARKNESS constant; rooms can override it via setDarkness().
     let darkness = DARKNESS;
@@ -212,6 +297,36 @@ export function createLighting(k) {
         const offsetX = camPos ? camPos.x - W / 2 : 0;
         const offsetY = camPos ? camPos.y - H / 2 : 0;
 
+        // Classify shadow casters as static or dynamic once per frame. A
+        // caster that has never moved is static (walls); one that moved is
+        // dynamic (player, pistons) and stays dynamic. Static shadows are
+        // pre-rendered per light (below) instead of recomputed + blurred
+        // for every light every frame — that was the bulk of the frame
+        // cost in the lamp hallway (11 lights × 10 casters, most static).
+        const staticCasters = [];
+        let staticSig = "";
+        for (const caster of shadowCasters) {
+            if (caster.destroyed) continue;
+            const cx0 = caster.pos.x;
+            const cy0 = caster.pos.y;
+            const ca0 = caster.angle || 0;
+            if (caster._ssx === undefined) {
+                caster._ssx = cx0;
+                caster._ssy = cy0;
+                caster._ssa = ca0;
+                caster._shadowStatic = true;
+            } else if (
+                caster._shadowStatic &&
+                (cx0 !== caster._ssx || cy0 !== caster._ssy || ca0 !== caster._ssa)
+            ) {
+                caster._shadowStatic = false;
+            }
+            if (caster._shadowStatic) {
+                staticCasters.push(caster);
+                staticSig += cx0 + "," + cy0 + "," + ca0 + ";";
+            }
+        }
+
         // 3. Carve a smooth radial hole for each active light, minus its
         //    shadows. For each light we compose its illumination on the temp
         //    canvas, then *erase* the shadow polygons out of it (subtractive),
@@ -249,70 +364,44 @@ export function createLighting(k) {
             //     the light provides the fade, and a blur filter softens the
             //     edges so the shadow looks like light bending around the
             //     object rather than a hard polygon.
+            //
+            //     Static casters (walls) are pre-rendered once per light
+            //     into a small light-local canvas and stamped down with a
+            //     single drawImage (scaled by the light's intensity).
+            //     Dynamic casters (player, pistons) are still computed and
+            //     blurred per frame, but culled by distance.
             tctx.globalCompositeOperation = "destination-out";
+            const wx = slx + offsetX;
+            const wy = sly + offsetY;
+            const staticKey = staticSig + "|" + wx.toFixed(1) + "," + wy.toFixed(1);
+            if (light._staticKey !== staticKey || !light._staticCanvas) {
+                const S = STATIC_R * 2;
+                let scv = light._staticCanvas;
+                if (!scv || scv.width !== S) {
+                    scv = document.createElement("canvas");
+                    scv.width = S;
+                    scv.height = S;
+                    light._staticCanvas = scv;
+                }
+                const sctx = scv.getContext("2d");
+                sctx.clearRect(0, 0, S, S);
+                sctx.globalCompositeOperation = "source-over";
+                sctx.filter = `blur(${SHADOW_SOFT}px)`;
+                const toLocal = (p) => ({ x: p.x - wx + STATIC_R, y: p.y - wy + STATIC_R });
+                for (const caster of staticCasters) {
+                    eraseShadow(sctx, wx, wy, caster, toLocal, 1);
+                }
+                sctx.filter = "none";
+                light._staticKey = staticKey;
+            }
+            tctx.globalAlpha = light.intensity;
+            tctx.drawImage(light._staticCanvas, slx - STATIC_R, sly - STATIC_R);
+            tctx.globalAlpha = 1;
             tctx.filter = `blur(${SHADOW_SOFT}px)`;
+            const toScreen = (p) => ({ x: p.x - offsetX, y: p.y - offsetY });
             for (const caster of shadowCasters) {
-                if (caster.destroyed) continue;
-                let result;
-                let isSectorWedge = false;
-                if (caster.annularSector) {
-                    // Annular-sector caster (e.g. the light director's ring).
-                    // The ring blocks ALL light sources, not just the one
-                    // inside it. computeAnnularSectorShadow dispatches on the
-                    // light's position:
-                    // - Light at the ring's center (dist < rIn): exact angular
-                    //   wedge of the solid part [a0, a1]; no light leaks
-                    //   between pieces. Hard shadow (no fade) across the full
-                    //   light radius — the ring is a solid barrier.
-                    // - Exterior light, aperture facing away: tangent-ray disc
-                    //   shadow covering the interior plus the region behind.
-                    // - Exterior light, aperture facing it: as above, with a
-                    //   notch so the light shaft enters through the aperture.
-                    // See computeAnnularSectorShadow for the full geometry.
-                    const sec = caster.annularSector;
-                    const distToCenter = Math.hypot(lx - sec.cx, ly - sec.cy);
-                    result = computeAnnularSectorShadow(lx, ly, sec, SHADOW_MAX_DIST);
-                    isSectorWedge = distToCenter < sec.rIn;
-                } else {
-                    const box = casterBox(caster, SHADOW_MARGIN);
-                    result = shadowPolygon(lx, ly, box);
-                }
-                if (!result) continue;
-                const { poly, farDist } = result;
-                // Radial gradient centered on the light: fully opaque (full
-                // erase) at the object's far edge, fading to transparent at
-                // the edge of the light's radius. This makes the shadow
-                // soften with distance.
-                //
-                // For the exact sector wedge (a light at the ring's center),
-                // the shadow must fully block the light throughout the entire
-                // light radius — the ring is a solid barrier, not a soft
-                // occluder. Use LIGHT_RADIUS as the "far edge" so the gradient
-                // stays at full opacity across the whole illuminated area.
-                // For a box shadow (external light), use the normal gradient
-                // (fading with distance).
-                const effectiveFarDist = isSectorWedge ? LIGHT_RADIUS : farDist;
-                const fadeEnd = effectiveFarDist + SHADOW_FADE * LIGHT_RADIUS;
-                // The gradient must be centered on the light's *screen* position
-                // (slx, sly), not its world position (lx, ly): the shadow polygon
-                // below is drawn in screen space (poly - offset), so a world-space
-                // gradient center would be shifted by (offsetX, offsetY) and fall
-                // outside the polygon whenever the camera is not at the origin.
-                // That is why shadows rendered in the empty room (camera clamped to
-                // the origin, offset = 0) but vanished in the long hallway.
-                const sgrad = tctx.createRadialGradient(slx, sly, 0, slx, sly, Math.max(fadeEnd, 1));
-                const peak = light.intensity;
-                sgrad.addColorStop(0, `rgba(0, 0, 0, ${peak})`);
-                sgrad.addColorStop(Math.min(1, effectiveFarDist / fadeEnd), `rgba(0, 0, 0, ${peak})`);
-                sgrad.addColorStop(1, "rgba(0, 0, 0, 0)");
-                tctx.fillStyle = sgrad;
-                tctx.beginPath();
-                tctx.moveTo(poly[0].x - offsetX, poly[0].y - offsetY);
-                for (let i = 1; i < poly.length; i++) {
-                    tctx.lineTo(poly[i].x - offsetX, poly[i].y - offsetY);
-                }
-                tctx.closePath();
-                tctx.fill();
+                if (caster.destroyed || caster._shadowStatic) continue;
+                eraseShadow(tctx, wx, wy, caster, toScreen, light.intensity);
             }
             tctx.filter = "none";
 
@@ -369,6 +458,8 @@ export function createLighting(k) {
         },
         unregister(light) {
             lights.delete(light);
+            light._staticCanvas = null;
+            light._staticKey = null;
         },
         // Register a game object as a shadow caster. The object's bounding
         // box is used to compute its shadow for each active light.

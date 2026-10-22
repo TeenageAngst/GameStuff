@@ -10,8 +10,9 @@ const { fail } = require('./harness');
 //   4. The shadow is continuous as the light direction rotates (no "popping"
 //      when orbiting the light): the polygon area changes smoothly between
 //      adjacent angles.
-//   5. Axis-aligned lights produce a 4-vertex trapezoid; diagonal lights
-//      produce a 5-vertex pentagon.
+//   5. Axis-aligned lights silhouette 2 box corners, diagonal lights 3;
+//      every remaining vertex sits on the SHADOW_MAX_DIST arc between the
+//      tangent rays (a chord would cut across wide cones).
 //   6. Casters beyond SHADOW_MAX_DIST produce no shadow.
 //
 // All geometry runs in the browser via a single page.evaluate that imports
@@ -78,12 +79,38 @@ module.exports = {
         const uy = dy / d;
         const behindX = bcx + ux * 50;
         const behindY = bcy + uy * 50;
+        // Structural facts for the far-cap arc: leading vertices must be
+        // box corners (the far-side silhouette); every remaining vertex
+        // must sit on the SHADOW_MAX_DIST circle around the light (the
+        // arc-sampled far cap — a chord would cut across wide cones).
+        const boxCorners = [
+          { x: box.x, y: box.y },
+          { x: box.x + box.w, y: box.y },
+          { x: box.x + box.w, y: box.y + box.h },
+          { x: box.x, y: box.y + box.h },
+        ];
+        let silhouetteLen = 0;
+        for (const p of poly) {
+          const onCorner = boxCorners.some(
+            (c) => Math.hypot(c.x - p.x, c.y - p.y) < 0.001
+          );
+          if (!onCorner) break;
+          silhouetteLen++;
+        }
+        const arcOnCircle = poly
+          .slice(silhouetteLen)
+          .every(
+            (p) =>
+              Math.abs(Math.hypot(p.x - lx, p.y - ly) - SHADOW_MAX_DIST) < 0.01
+          );
         return {
           poly,
           vertexCount: poly.length,
           area: polyArea(poly),
           centerInside: pointInPoly(bcx, bcy, poly),
           behindInside: pointInPoly(behindX, behindY, poly),
+          silhouetteLen,
+          arcOnCircle,
         };
       }
 
@@ -273,11 +300,16 @@ module.exports = {
       if (r.area < 1000) {
         fail(`Degenerate shadow at angle ${deg}° (area=${r.area.toFixed(0)})`);
       }
-      const expectedVerts = results.axisAngles.includes(deg) ? 4 : 5;
-      if (r.vertexCount !== expectedVerts) {
+      const expectedSil = results.axisAngles.includes(deg) ? 2 : 3;
+      if (r.silhouetteLen !== expectedSil) {
         fail(
-          `Wrong polygon shape at angle ${deg}°: got ${r.vertexCount} vertices, ` +
-            `expected ${expectedVerts}`
+          `Wrong silhouette at angle ${deg}°: got ${r.silhouetteLen} box-corner ` +
+            `vertices, expected ${expectedSil}`
+        );
+      }
+      if (!r.arcOnCircle) {
+        fail(
+          `Far-cap vertices are not on the SHADOW_MAX_DIST arc at angle ${deg}°`
         );
       }
     }

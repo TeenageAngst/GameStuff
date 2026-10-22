@@ -1,4 +1,4 @@
-import { createNarrative, createLight, createStat, createLightDirector, createLightSwitch } from './objects.js';
+import { createNarrative, createLight, createStat, createLightDirector, createLightSwitch, createEnemy } from './objects.js';
 import { TEXTS } from './texts.js';
 
 // Room manager: builds rooms from a data-driven registry, with fade transitions.
@@ -117,12 +117,12 @@ const ROOMS = {
                 k.z(-50),
             ]));
 
-            // Walls
+            // Walls (tagged interactable so they block light and cast shadows)
             const wallColor = [80, 70, 60];
-            objects.push(k.add([k.rect(roomW, WALL), k.pos(0, 0), k.color(wallColor), k.z(-40)]));
-            objects.push(k.add([k.rect(roomW, WALL), k.pos(0, roomH - WALL), k.color(wallColor), k.z(-40)]));
-            objects.push(k.add([k.rect(WALL, roomH), k.pos(0, 0), k.color(wallColor), k.z(-40)]));
-            objects.push(k.add([k.rect(WALL, roomH), k.pos(roomW - WALL, 0), k.color(wallColor), k.z(-40)]));
+            objects.push(k.add([k.rect(roomW, WALL), k.pos(0, 0), k.color(wallColor), k.z(-40), "interactable", `room:${ROOM_IDS.HALLWAY1}`]));
+            objects.push(k.add([k.rect(roomW, WALL), k.pos(0, roomH - WALL), k.color(wallColor), k.z(-40), "interactable", `room:${ROOM_IDS.HALLWAY1}`]));
+            objects.push(k.add([k.rect(WALL, roomH), k.pos(0, 0), k.color(wallColor), k.z(-40), "interactable", `room:${ROOM_IDS.HALLWAY1}`]));
+            objects.push(k.add([k.rect(WALL, roomH), k.pos(roomW - WALL, 0), k.color(wallColor), k.z(-40), "interactable", `room:${ROOM_IDS.HALLWAY1}`]));
 
             // Alternating lights, spaced so their glow circles (440px diameter)
             // somewhat overlap. 11 lamps × 320px spacing fills the hallway.
@@ -185,6 +185,54 @@ const ROOMS = {
             const door = createDoor("hallway1.door.west", [WALL, roomH / 2 - 32], ROOM_IDS.MAIN);
             objects.push(door, door.frame, door.handle);
 
+            // Shadow wisps: patrolling enemies drifting between the piston
+            // walls. They don't block light (they're made of shadow) — the
+            // player has to time crossings around them.
+            const wispDefs = [
+                { x: 500, xRange: 140, speed: 0.70, phase: 0.0 },
+                { x: 1150, xRange: 160, speed: 0.85, phase: 2.1 },
+                { x: 1800, xRange: 150, speed: 0.65, phase: 4.2 },
+                { x: 2450, xRange: 160, speed: 0.90, phase: 1.2 },
+                { x: 3100, xRange: 150, speed: 0.75, phase: 3.3 },
+            ];
+            const enemies = wispDefs.map((def, i) =>
+                createEnemy(k, `hallway1.enemy.wisp${i}`, player, {
+                    x: def.x,
+                    y: roomH / 2,
+                    xRange: def.xRange,
+                    yAmp: 55,
+                    speed: def.speed,
+                    phase: def.phase,
+                })
+            );
+            objects.push(...enemies);
+
+            // Shared enemy-hit feedback: decay the knockback velocity
+            // (applied via move() so walls still block it) and blink the
+            // player during the invulnerability window. Cancelled once the
+            // room's enemies are gone (room transition).
+            const knockUpdate = k.onUpdate(() => {
+                if (enemies.every((e) => e.destroyed)) {
+                    knockUpdate.cancel();
+                    return;
+                }
+                const dt = k.dt();
+                if ((player.knockVX || player.knockVY) && !player.frozen) {
+                    // move() takes a velocity (px/s) and scales by dt itself.
+                    player.move(player.knockVX, player.knockVY);
+                    const decay = Math.exp(-5 * dt);
+                    player.knockVX *= decay;
+                    player.knockVY *= decay;
+                    if (Math.hypot(player.knockVX, player.knockVY) < 8) {
+                        player.knockVX = 0;
+                        player.knockVY = 0;
+                    }
+                }
+                player.opacity = (player.nextVulnAt && k.time() < player.nextVulnAt)
+                    ? (Math.floor(k.time() * 14) % 2 === 0 ? 0.35 : 1)
+                    : 1;
+            });
+
             return objects;
         },
         playerPos(W, H) {
@@ -231,6 +279,10 @@ export function createRooms(k, player, lighting, ui) {
             `room:${room}`,
             {
                 isDoor: true,
+                // The room this door leads to — used on arrival to spawn
+                // the player at the matching door instead of the room's
+                // default entry point.
+                targetRoom: target,
                 interact: () => {
                     transitionTo(target, arrivalMessage);
                 },
@@ -287,10 +339,38 @@ export function createRooms(k, player, lighting, ui) {
         roomObjects = [];
     }
 
-    function placePlayer(roomId) {
+    function placePlayer(roomId, sourceRoom) {
         // This kaplay build exposes pos as a plain {x, y} object (no .set()),
         // so assign the components directly (matches how player.js clamps pos).
-        const [x, y] = ROOMS[roomId].playerPos(W, H);
+        let [x, y] = ROOMS[roomId].playerPos(W, H);
+        if (sourceRoom) {
+            // Spawn just inside the door that leads back to the room we
+            // came from, so walking through a door and back returns you
+            // to the door you used. The offset goes inward along the
+            // dominant axis (east/west doors shift x, north/south shift y).
+            // Falls back to the room's default entry point when no
+            // matching door exists.
+            const room = ROOMS[roomId];
+            const roomW = room.width || W;
+            const roomH = room.height || H;
+            const door = roomObjects.find(
+                (o) => o.isDoor && o.targetRoom === sourceRoom
+            );
+            if (door) {
+                // Door sprite is 48x64 at a topleft-anchored pos.
+                const cx = door.pos.x + 24;
+                const cy = door.pos.y + 32;
+                const dx = cx - roomW / 2;
+                const dy = cy - roomH / 2;
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    x = cx + (dx < 0 ? 96 : -96);
+                    y = cy;
+                } else {
+                    x = cx;
+                    y = cy + (dy < 0 ? 96 : -96);
+                }
+            }
+        }
         player.pos.x = x;
         player.pos.y = y;
     }
@@ -312,11 +392,12 @@ export function createRooms(k, player, lighting, ui) {
                 fade.opacity = Math.min(1, fade.opacity + step);
                 if (fade.opacity >= 1) {
                     // Fully hidden: swap the room.
+                    const sourceRoom = currentRoom;
                     destroyRoom();
                     buildRoom(targetRoom);
                     lighting.setDarkness(ROOMS[targetRoom].darkness);
                     currentRoom = targetRoom;
-                    placePlayer(targetRoom);
+                    placePlayer(targetRoom, sourceRoom);
                     fadeTarget = 0;
                 }
             } else {
