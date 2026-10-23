@@ -14,6 +14,32 @@ export function createPlayer(k) {
         console.log("Collision detected with interactable!");
     });
 
+    // Keep the player inside the current room's bounds.
+    function clampToRoom() {
+        const halfW = 16;
+        const halfH = 16;
+        const [roomW, roomH] = window.rooms.currentRoomDimensions;
+        if (player.pos.x < halfW) {
+            player.pos.x = halfW;
+        }
+        if (player.pos.x > roomW - halfW) {
+            player.pos.x = roomW - halfW;
+        }
+        if (player.pos.y < halfH) {
+            player.pos.y = halfH;
+        }
+        if (player.pos.y > roomH - halfH) {
+            player.pos.y = roomH - halfH;
+        }
+    }
+
+    // Collision resolution runs after onUpdate and can push the player
+    // past the room edge (e.g. out through the east door, which sits flush
+    // with the wall), so clamp again once physics has resolved.
+    player.onPhysicsResolve(() => {
+        clampToRoom();
+    });
+
     k.onUpdate(() => {
         // Frozen during room transitions (set by the room manager).
         if (player.frozen) return;
@@ -31,22 +57,7 @@ export function createPlayer(k) {
             player.move((dx / length) * player.speed, (dy / length) * player.speed);
         }
 
-        // Boundary collision
-        const halfW = 16;
-        const halfH = 16;
-        const [roomW, roomH] = window.rooms.currentRoomDimensions;
-        if (player.pos.x < halfW) {
-            player.pos.x = halfW;
-        }
-        if (player.pos.x > roomW - halfW) {
-            player.pos.x = roomW - halfW;
-        }
-        if (player.pos.y < halfH) {
-            player.pos.y = halfH;
-        }
-        if (player.pos.y > roomH - halfH) {
-            player.pos.y = roomH - halfH;
-        }
+        clampToRoom();
     });
 
     return player;
