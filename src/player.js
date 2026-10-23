@@ -7,6 +7,13 @@ export function createPlayer(k) {
         k.body(),
         {
             speed: 200,
+            // Player stats. Displayed in the HUD (see ui.js updateStats).
+            // Mechanics that read/modify these come later.
+            stats: {
+                health: 3,   // hearts
+                fight: 1,    // boxing gloves
+                courage: 1,  // swords
+            },
         }
     ]);
 

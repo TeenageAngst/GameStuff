@@ -26,6 +26,8 @@ k.onLoad(() => {
     window.ui = ui;
     const player = createPlayer(k);
     window.player = player;
+    // Render the initial stats HUD (health/fight/courage).
+    ui.updateStats(player.stats);
     setupInteraction(k, player);
 
     createBackground(k, player);
