@@ -7,6 +7,9 @@ export function createPlayer(k) {
         k.body(),
         {
             speed: 200,
+            // The sprite is a rounded square; inset the shadow silhouette so
+            // it hugs the opaque pixels instead of the rect's square corners.
+            shadowInset: 3,
         }
     ]);
 
