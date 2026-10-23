@@ -1,4 +1,4 @@
-import { createNarrative, createLight, createStat, createLightDirector, createLightSwitch, createEnemy } from './objects.js';
+import { createNarrative, createLight, createStat, createLightDirector, createLightSwitch, createEnemy, createGem } from './objects.js';
 import { TEXTS } from './texts.js';
 
 // Room manager: builds rooms from a data-driven registry, with fade transitions.
@@ -33,9 +33,15 @@ const ROOMS = {
         build(k, ctx) {
             const { W, H, player, lighting, ui, createDoor } = ctx;
             const objects = [];
-            objects.push(createNarrative(k, "main.narrative.air", [200, 200], ui));
+            // Floating gems (were plain squares): green shows the narrative
+            // text, red toggles speed. Both bob, spin, and stay interactable.
+            objects.push(createGem(k, "main.narrative.air", [200, 200], "gem-green", {
+                interact: () => ui.show(TEXTS["main.narrative.air"]),
+            }));
             objects.push(createLight(k, "main.environment.light", [400, 200], lighting));
-            objects.push(createStat(k, "main.stat.speed", [600, 200], player));
+            objects.push(createGem(k, "main.stat.speed", [600, 200], "gem-red", {
+                interact: () => { player.speed = player.speed === 200 ? 100 : 200; },
+            }));
             const doorSouth = createDoor("main.door.south", [W / 2 - 24, H - 88], ROOM_IDS.EMPTY);
             objects.push(doorSouth, doorSouth.frame, doorSouth.handle);
 

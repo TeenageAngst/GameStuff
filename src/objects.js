@@ -356,3 +356,84 @@ export function createStat(k, id, pos, player) {
         }
     ]);
 }
+
+// Draws a 40x40 faceted gem sprite on an offscreen canvas and returns it as
+// a data URL for k.loadSprite. `color` is [r, g, b]; dark/light facets are
+// derived from it. The asymmetric highlight makes rotation visible.
+export function makeGemSprite([r, g, b]) {
+    const S = 40;
+    const cv = document.createElement("canvas");
+    cv.width = S;
+    cv.height = S;
+    const ctx = cv.getContext("2d");
+    const dark = `rgb(${r * 0.45 | 0}, ${g * 0.45 | 0}, ${b * 0.45 | 0})`;
+    const base = `rgb(${r}, ${g}, ${b})`;
+    const light = `rgb(${Math.min(255, r + 130) | 0}, ${Math.min(255, g + 130) | 0}, ${Math.min(255, b + 130) | 0})`;
+    const cx = S / 2, cy = S / 2;
+    // Diamond body
+    ctx.beginPath();
+    ctx.moveTo(cx, 2);
+    ctx.lineTo(S - 2, cy);
+    ctx.lineTo(cx, S - 2);
+    ctx.lineTo(2, cy);
+    ctx.closePath();
+    ctx.fillStyle = base;
+    ctx.fill();
+    ctx.strokeStyle = dark;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Facet lines
+    ctx.beginPath();
+    ctx.moveTo(cx, 2); ctx.lineTo(cx, S - 2);
+    ctx.moveTo(2, cy); ctx.lineTo(S - 2, cy);
+    ctx.strokeStyle = dark;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // Highlight on the upper-right facet (asymmetric so spin reads)
+    ctx.beginPath();
+    ctx.moveTo(cx, 2);
+    ctx.lineTo(S - 2, cy);
+    ctx.lineTo(cx, cy);
+    ctx.closePath();
+    ctx.fillStyle = light;
+    ctx.globalAlpha = 0.55;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    return cv.toDataURL("image/png");
+}
+
+// Creates a floating gem: a spinning, bobbing interactable. `spriteName`
+// must have been loaded via k.loadSprite (see makeGemSprite). `opts.interact`
+// is the E-key behavior; ids are kept stable so existing logic still works.
+export function createGem(k, id, pos, spriteName, opts = {}) {
+    const room = id.split('.')[0];
+    const baseY = pos[1];
+    const gem = k.add([
+        k.sprite(spriteName),
+        k.anchor("center"),
+        k.pos(pos),
+        k.area(),
+        k.body({ isStatic: true }),
+        "interactable",
+        id,
+        `room:${room}`,
+        {
+            interact: opts.interact || (() => {}),
+        }
+    ]);
+    const bobAmp = opts.bobAmp ?? 8;
+    const bobSpeed = opts.bobSpeed ?? 1.6;
+    const spinSpeed = opts.spinSpeed ?? 35; // degrees per second
+    const phase = opts.phase ?? Math.random() * Math.PI * 2;
+    let t = phase;
+    const update = k.onUpdate(() => {
+        if (gem.destroyed) {
+            update.cancel();
+            return;
+        }
+        t += k.dt();
+        gem.pos.y = baseY + Math.sin(t * bobSpeed) * bobAmp;
+        gem.angle = (gem.angle + spinSpeed * k.dt()) % 360;
+    });
+    return gem;
+}
