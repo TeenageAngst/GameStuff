@@ -16,9 +16,46 @@ const k = kaplay({
 
 window.k = k;
 
+// Draws a 32x32 directional player sprite on an offscreen canvas and
+// returns it as a data URL for k.loadSprite. Same rounded-square body as
+// the original player.png, with two eyes toward the facing edge so the
+// player reads as facing up/down/left/right.
+function makePlayerSprite(facing) {
+    const S = 32;
+    const cv = document.createElement("canvas");
+    cv.width = S;
+    cv.height = S;
+    const ctx = cv.getContext("2d");
+    // Body
+    ctx.fillStyle = "#e5c49d";
+    ctx.strokeStyle = "#aa8f6f";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    if (ctx.roundRect) {
+        ctx.roundRect(3.5, 3.5, S - 7, S - 7, 7);
+    } else {
+        ctx.rect(3.5, 3.5, S - 7, S - 7);
+    }
+    ctx.fill();
+    ctx.stroke();
+    // Eyes toward the facing edge
+    ctx.fillStyle = "#3c2a1e";
+    const eyes = {
+        down:  [[10, 18, 5, 7], [18, 18, 5, 7]],
+        up:    [[10, 8, 5, 7],  [18, 8, 5, 7]],
+        left:  [[7, 10, 6, 5],  [7, 18, 6, 5]],
+        right: [[20, 10, 6, 5], [20, 18, 6, 5]],
+    }[facing];
+    for (const [x, y, w, h] of eyes) ctx.fillRect(x, y, w, h);
+    return cv.toDataURL("image/png");
+}
+
 // Load the player sprite, then start the game once the asset is ready so
 // k.sprite() has the image available.
 k.loadSprite("player.png", "assets/player.png");
+for (const dir of ["down", "up", "left", "right"]) {
+    k.loadSprite(`player-${dir}.png`, makePlayerSprite(dir));
+}
 k.loadSprite("lamp.png", "assets/lamp.png");
 k.loadSprite("wisp.png", "assets/wisp.png");
 k.onLoad(() => {

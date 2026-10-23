@@ -1,18 +1,27 @@
 export function createPlayer(k) {
     const player = k.add([
-        k.sprite("player.png"),
+        k.sprite("player-down.png"),
         k.anchor("center"),
         k.pos(k.center()),
         k.area(),
         k.body(),
         {
             speed: 200,
+            // Which way the player is facing; sprite swaps to match.
+            facing: "down",
         }
     ]);
 
     player.onCollide("interactable", () => {
         console.log("Collision detected with interactable!");
     });
+
+    // Swap the sprite to face a new direction (no-op if unchanged).
+    function setFacing(dir) {
+        if (player.facing === dir) return;
+        player.facing = dir;
+        player.use(k.sprite(`player-${dir}.png`));
+    }
 
     k.onUpdate(() => {
         // Frozen during room transitions (set by the room manager).
@@ -29,6 +38,12 @@ export function createPlayer(k) {
         if (dx !== 0 || dy !== 0) {
             const length = Math.sqrt(dx * dx + dy * dy);
             player.move((dx / length) * player.speed, (dy / length) * player.speed);
+            // Face the dominant movement axis; keeps last facing when idle.
+            if (Math.abs(dx) >= Math.abs(dy)) {
+                setFacing(dx < 0 ? "left" : "right");
+            } else {
+                setFacing(dy < 0 ? "up" : "down");
+            }
         }
 
         // Boundary collision
