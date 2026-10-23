@@ -306,7 +306,7 @@ export function createLighting(k) {
         const staticCasters = [];
         let staticSig = "";
         for (const caster of shadowCasters) {
-            if (caster.destroyed) continue;
+            if (!caster.exists()) continue;
             const cx0 = caster.pos.x;
             const cy0 = caster.pos.y;
             const ca0 = caster.angle || 0;
@@ -400,7 +400,7 @@ export function createLighting(k) {
             tctx.filter = `blur(${SHADOW_SOFT}px)`;
             const toScreen = (p) => ({ x: p.x - offsetX, y: p.y - offsetY });
             for (const caster of shadowCasters) {
-                if (caster.destroyed || caster._shadowStatic) continue;
+                if (!caster.exists() || caster._shadowStatic) continue;
                 eraseShadow(tctx, wx, wy, caster, toScreen, light.intensity);
             }
             tctx.filter = "none";

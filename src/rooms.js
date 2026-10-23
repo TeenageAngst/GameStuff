@@ -117,12 +117,12 @@ const ROOMS = {
                 k.z(-50),
             ]));
 
-            // Walls (tagged interactable so they block light and cast shadows)
+            // Walls (tagged shadowCaster so they block light and cast shadows)
             const wallColor = [80, 70, 60];
-            objects.push(k.add([k.rect(roomW, WALL), k.pos(0, 0), k.color(wallColor), k.z(-40), "interactable", `room:${ROOM_IDS.HALLWAY1}`]));
-            objects.push(k.add([k.rect(roomW, WALL), k.pos(0, roomH - WALL), k.color(wallColor), k.z(-40), "interactable", `room:${ROOM_IDS.HALLWAY1}`]));
-            objects.push(k.add([k.rect(WALL, roomH), k.pos(0, 0), k.color(wallColor), k.z(-40), "interactable", `room:${ROOM_IDS.HALLWAY1}`]));
-            objects.push(k.add([k.rect(WALL, roomH), k.pos(roomW - WALL, 0), k.color(wallColor), k.z(-40), "interactable", `room:${ROOM_IDS.HALLWAY1}`]));
+            objects.push(k.add([k.rect(roomW, WALL), k.pos(0, 0), k.color(wallColor), k.z(-40), "shadowCaster", `room:${ROOM_IDS.HALLWAY1}`]));
+            objects.push(k.add([k.rect(roomW, WALL), k.pos(0, roomH - WALL), k.color(wallColor), k.z(-40), "shadowCaster", `room:${ROOM_IDS.HALLWAY1}`]));
+            objects.push(k.add([k.rect(WALL, roomH), k.pos(0, 0), k.color(wallColor), k.z(-40), "shadowCaster", `room:${ROOM_IDS.HALLWAY1}`]));
+            objects.push(k.add([k.rect(WALL, roomH), k.pos(roomW - WALL, 0), k.color(wallColor), k.z(-40), "shadowCaster", `room:${ROOM_IDS.HALLWAY1}`]));
 
             // Alternating lights, spaced so their glow circles (440px diameter)
             // somewhat overlap. 11 lamps × 320px spacing fills the hallway.
@@ -164,7 +164,7 @@ const ROOMS = {
                     k.color(70, 70, 80),
                     k.area(),
                     k.body({ isStatic: true }),
-                    "interactable",
+                    "shadowCaster",
                     `hallway1.wall.${wi}`,
                     `room:${ROOM_IDS.HALLWAY1}`,
                 ]);
@@ -174,9 +174,13 @@ const ROOMS = {
                 const phase = wi * 1.3;
                 const speed = 1.2;
                 let t = 0;
-                k.onUpdate(() => {
-                    // Only animate while this room is active.
-                    if (wall.destroyed) return;
+                const wallUpdate = k.onUpdate(() => {
+                    // Only animate while this room is active; stop the
+                    // handler once the wall is destroyed (room transition).
+                    if (!wall.exists()) {
+                        wallUpdate.cancel();
+                        return;
+                    }
                     t += k.dt() * speed;
                     const y = wallBaseY + Math.sin(t + phase) * wallAmp - wallH / 2;
                     wall.pos.y = y;
@@ -212,7 +216,7 @@ const ROOMS = {
             // player during the invulnerability window. Cancelled once the
             // room's enemies are gone (room transition).
             const knockUpdate = k.onUpdate(() => {
-                if (enemies.every((e) => e.destroyed)) {
+                if (enemies.every((e) => !e.exists())) {
                     knockUpdate.cancel();
                     return;
                 }
@@ -275,6 +279,7 @@ export function createRooms(k, player, lighting, ui) {
             k.area(),
             k.body({ isStatic: true }),
             "interactable",
+            "shadowCaster",
             id,
             `room:${room}`,
             {
@@ -312,12 +317,11 @@ export function createRooms(k, player, lighting, ui) {
         const ctx = { W, H, player, lighting, ui, createDoor };
         const objects = room.build(k, ctx);
         roomObjects.push(...objects);
-        // Register interactable objects as shadow casters so they block light
-        // and cast shadows. The light source itself is skipped (it emits, not
-        // blocks).
+        // Register objects tagged "shadowCaster" so they block light and
+        // cast shadows. Light sources are never tagged (they emit, not
+        // block).
         for (const obj of objects) {
-            const hasInt = obj.tags && obj.tags.includes("interactable");
-            if (hasInt && obj.lightOn === undefined) {
+            if (obj.tags && obj.tags.includes("shadowCaster")) {
                 lighting.registerShadowCaster(obj);
             }
         }
@@ -331,7 +335,7 @@ export function createRooms(k, player, lighting, ui) {
                 lighting.unregister(obj);
             }
             // Unregister shadow casters for the same reason.
-            if (obj.tags && obj.tags.includes("interactable") && obj.lightOn === undefined) {
+            if (obj.tags && obj.tags.includes("shadowCaster")) {
                 lighting.unregisterShadowCaster(obj);
             }
             obj.destroy();
