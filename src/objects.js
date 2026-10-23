@@ -27,6 +27,7 @@ export function createNarrative(k, id, pos, ui) {
         k.area(),
         k.body({ isStatic: true }),
         "interactable",
+        "shadowCaster",
         id,
         `room:${room}`,
         {
@@ -94,6 +95,7 @@ export function createLightSwitch(k, id, pos, lamp) {
         k.color(225, 220, 205),
         k.area(),
         "interactable",
+        "shadowCaster",
         id,
         `room:${room}`,
         {
@@ -124,7 +126,7 @@ export function createLightSwitch(k, id, pos, lamp) {
 // computed by `computeAnnularSectorShadow` (shadowGeometry.js), which
 // produces the exact angular wedge of the solid part of the ring — so no
 // light leaks between pieces (the old 7-chord approach left ~2° gaps at
-// each joint). The entity carries the "interactable" tag so rooms.js
+// each joint). The entity carries the "shadowCaster" tag so rooms.js
 // auto-registers it as a shadow caster; the `annularSector` property tells
 // the lighting system to use the sector geometry instead of a box.
 //
@@ -208,6 +210,7 @@ export function createLightDirector(k, id, lamp, lighting, player) {
         // Solid: the player cannot walk through the housing.
         k.body({ isStatic: true }),
         "interactable",
+        "shadowCaster",
         id,
         `room:${room}`,
         { interact: () => {} },
@@ -249,13 +252,13 @@ export function createLightDirector(k, id, lamp, lighting, player) {
     place();
 
     const update = k.onUpdate(() => {
-        if (housing.destroyed) {
+        if (!housing.exists()) {
             update.cancel(); // housing is gone; stop tracking it
             return;
         }
         // Pushing: the ring only spins while the player is pushing the handle.
         // Pushing the ring body itself does nothing.
-        if (player && !player.destroyed && player.isColliding(handle)) {
+        if (player && player.exists() && player.isColliding(handle)) {
             const playerAngle = Math.atan2(player.pos.y - cy, player.pos.x - cx);
             let diff = playerAngle - angle;
             while (diff > Math.PI) diff -= 2 * Math.PI;
@@ -301,7 +304,7 @@ export function createEnemy(k, id, player, opts = {}) {
 
     let t = phase;
     const update = k.onUpdate(() => {
-        if (enemy.destroyed) {
+        if (!enemy.exists()) {
             update.cancel();
             return;
         }
@@ -310,7 +313,7 @@ export function createEnemy(k, id, player, opts = {}) {
         enemy.pos.y = y + Math.sin(t * 1.6 + phase) * yAmp;
         // Knockback on touch, with an invulnerability window so one
         // touch doesn't chain-stun the player.
-        if (player && !player.destroyed && enemy.isColliding(player)) {
+        if (player && player.exists() && enemy.isColliding(player)) {
             const now = k.time();
             if (now >= (player.nextVulnAt || 0)) {
                 let dx = player.pos.x - enemy.pos.x;
@@ -347,6 +350,7 @@ export function createStat(k, id, pos, player) {
         k.area(),
         k.body({ isStatic: true }),
         "interactable",
+        "shadowCaster",
         id,
         `room:${room}`,
         {
