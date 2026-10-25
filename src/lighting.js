@@ -17,7 +17,7 @@ const DARKNESS = 0.65; // overlay opacity when no lights are on (default)
 const LIGHT_RADIUS = 220; // radius (px) of a light's illumination
 const FADE_TIME = 0.2; // seconds to fade a light in/out
 const CORE_RADIUS = 20; // bright core drawn above the darkness at the source
-const SHADOW_MARGIN = 2; // px padding around a caster's silhouette so it fully covers the body
+const SHADOW_MARGIN = 2; // px padding around a caster so its body stays in shadow
 const SHADOW_FADE = 0.7; // fraction of the light radius over which the shadow fades out
 const SHADOW_SOFT = 8; // px blur radius for softening the shadow's edges
 const GLOW_STRENGTH = 0.6; // how strongly a light's color tints its lit area
@@ -123,36 +123,47 @@ export function createLighting(k) {
     const shadowCasters = new Set();
 
     // Axis-aligned bounding box of an object in world coordinates, padded by
-    // `margin` so the silhouette fully covers the body, then inset by the
-    // object's `shadowInset` (if any) so the silhouette hugs the opaque
-    // visual instead of the bounding rect. (Sprites with transparency, like
-    // the rounded player sprite, have opaque pixels inset from their rect;
-    // without the inset the shadow follows the rect's square corners.)
+    // `margin` so the object's own body stays inside its shadow.
     //
-    // Uses the visual bounds (width/height/scale/anchor/pos), not the `area`
-    // hitbox: with bare `k.area()` the hitbox IS the render area anyway, and
-    // an explicit hitbox shape is for gameplay, not for how light sees the
-    // object.
+    // Prefers the object's `area` component (a world-space rect that is
+    // anchor-independent), falling back to a pos/width computation that
+    // accounts for the object's anchor. This matters because the player uses
+    // anchor("center") while most objects use the default top-left anchor.
     function casterBox(obj, margin) {
-        const sx = obj.scale ? obj.scale.x : 1;
-        const sy = obj.scale ? obj.scale.y : 1;
-        const w = (obj.width || 32) * sx;
-        const h = (obj.height || 32) * sy;
-        // Anchor offset: kaplay anchors are strings like "center",
-        // "topleft", "topright", "botleft", "botright", "top", "bottom",
-        // "left", "right". Map to (ax, ay) in [0,1] where 0 = left/top
-        // and 1 = right/bottom.
-        const anchor = typeof obj.anchor === "string" ? obj.anchor : "topleft";
-        const ax = /right/.test(anchor) ? 1 : /left/.test(anchor) ? 0 : 0.5;
-        const ay = /bot/.test(anchor) ? 1 : /top/.test(anchor) ? 0 : 0.5;
-        const x = obj.pos.x - ax * w;
-        const y = obj.pos.y - ay * h;
-        const inset = obj.shadowInset || 0;
+        let x, y, w, h;
+        // For rotated objects, use the unrotated rectangle (from pos/width/
+        // height/anchor) so the shadow geometry can rotate it correctly.
+        // The `area` component's pos is the AABB of the rotated shape, which
+        // would be too large.
+        if (obj.area && obj.area.pos && !obj.angle) {
+            // `area` is a world-space rect: .pos is its top-left corner.
+            x = obj.area.pos.x;
+            y = obj.area.pos.y;
+            w = obj.area.width;
+            h = obj.area.height;
+        } else {
+            // abs: a flipped sprite (negative scale, e.g. the spinning gems)
+            // has the same bounding box as unflipped; a negative width would
+            // invert the box and break the shadow geometry.
+            const sx = obj.scale ? Math.abs(obj.scale.x) : 1;
+            const sy = obj.scale ? Math.abs(obj.scale.y) : 1;
+            w = (obj.width || 32) * sx;
+            h = (obj.height || 32) * sy;
+            // Anchor offset: kaplay anchors are strings like "center",
+            // "topleft", "topright", "botleft", "botright", "top", "bottom",
+            // "left", "right". Map to (ax, ay) in [0,1] where 0 = left/top
+            // and 1 = right/bottom.
+            const anchor = typeof obj.anchor === "string" ? obj.anchor : "topleft";
+            const ax = /right/.test(anchor) ? 1 : /left/.test(anchor) ? 0 : 0.5;
+            const ay = /bot/.test(anchor) ? 1 : /top/.test(anchor) ? 0 : 0.5;
+            x = obj.pos.x - ax * w;
+            y = obj.pos.y - ay * h;
+        }
         return {
-            x: x - margin + inset,
-            y: y - margin + inset,
-            w: w + margin * 2 - inset * 2,
-            h: h + margin * 2 - inset * 2,
+            x: x - margin,
+            y: y - margin,
+            w: w + margin * 2,
+            h: h + margin * 2,
             angle: (obj.angle || 0) * Math.PI / 180,
         };
     }
@@ -206,11 +217,11 @@ export function createLighting(k) {
             result = shadowPolygon(wx, wy, box);
         }
         if (!result) return;
-        const { poly, nearDist, farDist } = result;
-        // Radial gradient centered on the light: transparent at the object's
-        // near silhouette, ramping to full erase over the penumbra, holding
-        // full through the shadow body, then fading to transparent at the
-        // edge of the light's radius.
+        const { poly, farDist } = result;
+        // Radial gradient centered on the light: fully opaque (full
+        // erase) at the object's far edge, fading to transparent at
+        // the edge of the light's radius. This makes the shadow
+        // soften with distance.
         //
         // For the exact sector wedge (a light at the ring's center),
         // the shadow must fully block the light throughout the entire
@@ -221,15 +232,6 @@ export function createLighting(k) {
         // (fading with distance).
         const effectiveFarDist = isSectorWedge ? LIGHT_RADIUS : farDist;
         const fadeEnd = effectiveFarDist + SHADOW_FADE * LIGHT_RADIUS;
-        // Penumbra: the shadow fades IN from the silhouette over PENUMBRA px
-        // instead of starting at full strength. Starting at full strength put
-        // a hard dark outline right on the caster's (square) silhouette, and
-        // with several lamps around, those outlines merged into a visible
-        // "square of shadow" hugging the player. Ramping in removes the
-        // outline; the shadow still reaches full strength just behind the
-        // caster. Skipped for the interior sector wedge, which is designed as
-        // a hard barrier.
-        const PENUMBRA = 14;
         // The gradient is centered on the light in ctx's own coordinates
         // (via toLocal): the shadow polygon below is drawn through the
         // same mapping, so a world-space gradient center would be shifted
@@ -239,19 +241,8 @@ export function createLighting(k) {
         // origin — but vanished in the long hallway.)
         const c = toLocal({ x: wx, y: wy });
         const sgrad = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, Math.max(fadeEnd, 1));
-        if (isSectorWedge) {
-            sgrad.addColorStop(0, `rgba(0, 0, 0, ${peak})`);
-            sgrad.addColorStop(Math.min(1, effectiveFarDist / fadeEnd), `rgba(0, 0, 0, ${peak})`);
-        } else {
-            const nearStop = Math.min(1, nearDist / fadeEnd);
-            const fullDist = Math.min(nearDist + PENUMBRA, effectiveFarDist);
-            const fullStop = Math.min(1, fullDist / fadeEnd);
-            const farStop = Math.min(1, effectiveFarDist / fadeEnd);
-            sgrad.addColorStop(0, "rgba(0, 0, 0, 0)");
-            sgrad.addColorStop(nearStop, "rgba(0, 0, 0, 0)");
-            sgrad.addColorStop(fullStop, `rgba(0, 0, 0, ${peak})`);
-            sgrad.addColorStop(farStop, `rgba(0, 0, 0, ${peak})`);
-        }
+        sgrad.addColorStop(0, `rgba(0, 0, 0, ${peak})`);
+        sgrad.addColorStop(Math.min(1, effectiveFarDist / fadeEnd), `rgba(0, 0, 0, ${peak})`);
         sgrad.addColorStop(1, "rgba(0, 0, 0, 0)");
         ctx.fillStyle = sgrad;
         ctx.beginPath();
@@ -318,7 +309,7 @@ export function createLighting(k) {
         const staticCasters = [];
         let staticSig = "";
         for (const caster of shadowCasters) {
-            if (!caster.exists()) continue;
+            if (caster.destroyed) continue;
             const cx0 = caster.pos.x;
             const cy0 = caster.pos.y;
             const ca0 = caster.angle || 0;
@@ -412,7 +403,7 @@ export function createLighting(k) {
             tctx.filter = `blur(${SHADOW_SOFT}px)`;
             const toScreen = (p) => ({ x: p.x - offsetX, y: p.y - offsetY });
             for (const caster of shadowCasters) {
-                if (!caster.exists() || caster._shadowStatic) continue;
+                if (caster.destroyed || caster._shadowStatic) continue;
                 eraseShadow(tctx, wx, wy, caster, toScreen, light.intensity);
             }
             tctx.filter = "none";

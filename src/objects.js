@@ -27,7 +27,6 @@ export function createNarrative(k, id, pos, ui) {
         k.area(),
         k.body({ isStatic: true }),
         "interactable",
-        "shadowCaster",
         id,
         `room:${room}`,
         {
@@ -95,7 +94,6 @@ export function createLightSwitch(k, id, pos, lamp) {
         k.color(225, 220, 205),
         k.area(),
         "interactable",
-        "shadowCaster",
         id,
         `room:${room}`,
         {
@@ -126,7 +124,7 @@ export function createLightSwitch(k, id, pos, lamp) {
 // computed by `computeAnnularSectorShadow` (shadowGeometry.js), which
 // produces the exact angular wedge of the solid part of the ring — so no
 // light leaks between pieces (the old 7-chord approach left ~2° gaps at
-// each joint). The entity carries the "shadowCaster" tag so rooms.js
+// each joint). The entity carries the "interactable" tag so rooms.js
 // auto-registers it as a shadow caster; the `annularSector` property tells
 // the lighting system to use the sector geometry instead of a box.
 //
@@ -210,7 +208,6 @@ export function createLightDirector(k, id, lamp, lighting, player) {
         // Solid: the player cannot walk through the housing.
         k.body({ isStatic: true }),
         "interactable",
-        "shadowCaster",
         id,
         `room:${room}`,
         { interact: () => {} },
@@ -252,13 +249,13 @@ export function createLightDirector(k, id, lamp, lighting, player) {
     place();
 
     const update = k.onUpdate(() => {
-        if (!housing.exists()) {
+        if (housing.destroyed) {
             update.cancel(); // housing is gone; stop tracking it
             return;
         }
         // Pushing: the ring only spins while the player is pushing the handle.
         // Pushing the ring body itself does nothing.
-        if (player && player.exists() && player.isColliding(handle)) {
+        if (player && !player.destroyed && player.isColliding(handle)) {
             const playerAngle = Math.atan2(player.pos.y - cy, player.pos.x - cx);
             let diff = playerAngle - angle;
             while (diff > Math.PI) diff -= 2 * Math.PI;
@@ -304,7 +301,7 @@ export function createEnemy(k, id, player, opts = {}) {
 
     let t = phase;
     const update = k.onUpdate(() => {
-        if (!enemy.exists()) {
+        if (enemy.destroyed) {
             update.cancel();
             return;
         }
@@ -313,7 +310,7 @@ export function createEnemy(k, id, player, opts = {}) {
         enemy.pos.y = y + Math.sin(t * 1.6 + phase) * yAmp;
         // Knockback on touch, with an invulnerability window so one
         // touch doesn't chain-stun the player.
-        if (player && player.exists() && enemy.isColliding(player)) {
+        if (player && !player.destroyed && enemy.isColliding(player)) {
             const now = k.time();
             if (now >= (player.nextVulnAt || 0)) {
                 let dx = player.pos.x - enemy.pos.x;
@@ -350,7 +347,6 @@ export function createStat(k, id, pos, player) {
         k.area(),
         k.body({ isStatic: true }),
         "interactable",
-        "shadowCaster",
         id,
         `room:${room}`,
         {
@@ -359,4 +355,147 @@ export function createStat(k, id, pos, player) {
             }
         }
     ]);
+}
+
+// Draws one frame of a spinning side-view cut diamond into ctx at horizontal
+// offset ox. `phase` is the spin angle (0..2π). The silhouette stays fixed
+// — a flat table, trapezoid crown, wide girdle, pointed pavilion (the
+// classic brilliant-cut side profile). What moves is the facet pattern
+// inside it: brightness bands travel across the stone and facet boundary
+// lines slide with the spin, so the faces read as turning on a 3D stone.
+// This is deliberately NOT a squash/flip of the whole picture (scale.x =
+// cos(t) — kept in the back pocket as a cheap alternative): that reads as
+// a 2D cutout flexing, not as faces moving on a gemstone.
+function drawGemFrame(ctx, ox, [r, g, b], phase) {
+    const S = 40;
+    const shade = (f, add) => `rgb(${Math.min(255, r * f + add) | 0}, ${Math.min(255, g * f + add) | 0}, ${Math.min(255, b * f + add) | 0})`;
+    const dark = shade(0.45, 0);
+    const base = shade(1, 0);
+    const lightest = shade(1, 160);
+    // Geometry: table y=6 (x 13..27), girdle y=16 (x 4..36), culet (20,38).
+    const T0 = [13 + ox, 6], T1 = [27 + ox, 6];
+    const G0 = [4 + ox, 16], G1 = [36 + ox, 16];
+    const C = [20 + ox, 16];
+    const P = [20 + ox, 38];
+    function silhouettePath() {
+        ctx.beginPath();
+        ctx.moveTo(T0[0], T0[1]); ctx.lineTo(T1[0], T1[1]); ctx.lineTo(G1[0], G1[1]);
+        ctx.lineTo(P[0], P[1]); ctx.lineTo(G0[0], G0[1]); ctx.closePath();
+    }
+    // Base fill
+    silhouettePath();
+    ctx.fillStyle = base;
+    ctx.fill();
+    // Moving facet shading, clipped to the silhouette.
+    ctx.save();
+    silhouettePath();
+    ctx.clip();
+    // Traveling brightness bands: 2 waves across the stone, sliding with phase.
+    for (let x = 0; x < S; x++) {
+        const w = Math.sin((x / S) * Math.PI * 4 + phase);
+        ctx.fillStyle = w > 0
+            ? `rgba(255, 255, 255, ${(w * 0.28).toFixed(3)})`
+            : `rgba(0, 0, 0, ${(-w * 0.22).toFixed(3)})`;
+        ctx.fillRect(ox + x, 0, 1, S);
+    }
+    // Sliding facet boundary lines: spacing 11px, offset loops with phase
+    // (at phase=2π the offset is exactly one spacing, so the loop is seamless).
+    const spacing = 11;
+    const offset = (phase / (Math.PI * 2)) * spacing;
+    ctx.strokeStyle = dark;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    for (let x = -spacing; x < S + spacing; x += spacing) {
+        const lx = ox + x + offset;
+        ctx.moveTo(lx, 0);
+        ctx.lineTo(lx, S);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.restore();
+    // Translucent table face (lets the bands show through)
+    ctx.beginPath();
+    ctx.moveTo(T0[0], T0[1]); ctx.lineTo(T1[0], T1[1]); ctx.lineTo(C[0], C[1]);
+    ctx.closePath();
+    ctx.fillStyle = lightest;
+    ctx.globalAlpha = 0.35;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    // Outline + structural lines
+    silhouettePath();
+    ctx.strokeStyle = dark;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(G0[0], G0[1]); ctx.lineTo(G1[0], G1[1]);
+    ctx.moveTo(C[0], C[1]); ctx.lineTo(P[0], P[1]);
+    ctx.strokeStyle = dark;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+}
+
+// Pre-renders a horizontal strip of `frameCount` spinning-gem frames (one
+// 40x40 cell each) and returns it as a data URL. Load with
+// k.loadSprite(name, url, { sliceX: frameCount, sliceY: 1 }) and animate by
+// setting obj.frame.
+export function makeGemStrip(color, frameCount = 12) {
+    const S = 40;
+    const cv = document.createElement("canvas");
+    cv.width = S * frameCount;
+    cv.height = S;
+    const ctx = cv.getContext("2d");
+    for (let i = 0; i < frameCount; i++) {
+        drawGemFrame(ctx, i * S, color, (i / frameCount) * Math.PI * 2);
+    }
+    return cv.toDataURL("image/png");
+}
+
+// Creates a floating gem: a spinning, bobbing interactable. `spriteName`
+// must have been loaded as a sliced strip via makeGemStrip (see above).
+// `opts.interact` is the E-key behavior; ids are kept stable so existing
+// logic still works.
+export function createGem(k, id, pos, spriteName, opts = {}) {
+    const room = id.split('.')[0];
+    const baseY = pos[1];
+    const frameCount = opts.frameCount ?? 12;
+    const gem = k.add([
+        k.sprite(spriteName),
+        k.anchor("center"),
+        k.pos(pos),
+        k.area(),
+        k.body({ isStatic: true }),
+        "interactable",
+        id,
+        `room:${room}`,
+        {
+            interact: opts.interact || (() => {}),
+        }
+    ]);
+    const bobAmp = opts.bobAmp ?? 8;
+    const bobSpeed = opts.bobSpeed ?? 1.6;
+    // Spin = cycling the pre-rendered facet frames. The silhouette stays
+    // fixed; the faces move inside it. (Back-pocket alternative: scale.x =
+    // cos(t) flip-spin — cheaper, but reads as a 2D cutout flexing.)
+    const spinDuration = opts.spinDuration ?? 2.4; // seconds per full turn
+    const phase = opts.phase ?? Math.random() * Math.PI * 2;
+    let t = phase;
+    let frameTimer = 0;
+    let frame = 0;
+    const update = k.onUpdate(() => {
+        if (gem.destroyed) {
+            update.cancel();
+            return;
+        }
+        t += k.dt();
+        gem.pos.y = baseY + Math.sin(t * bobSpeed) * bobAmp;
+        frameTimer += k.dt();
+        const frameTime = spinDuration / frameCount;
+        while (frameTimer >= frameTime) {
+            frameTimer -= frameTime;
+            frame = (frame + 1) % frameCount;
+            gem.frame = frame;
+        }
+    });
+    return gem;
 }
