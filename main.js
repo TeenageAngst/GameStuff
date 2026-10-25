@@ -1,7 +1,7 @@
 import { createPlayer } from './src/player.js';
 import { setupInteraction } from './src/interaction.js';
 import { createUI } from './src/ui.js';
-import { createNarrative, createLight, createStat, createLightDirector, createLightSwitch, makeGemSprite } from './src/objects.js';
+import { createNarrative, createLight, createStat, createLightDirector, createLightSwitch, makeGemStrip } from './src/objects.js';
 import { createBackground } from './src/background.js';
 import { createLighting } from './src/lighting.js';
 import { createRooms, ROOM_IDS } from './src/rooms.js';
@@ -21,9 +21,11 @@ window.k = k;
 k.loadSprite("player.png", "assets/player.png");
 k.loadSprite("lamp.png", "assets/lamp.png");
 k.loadSprite("wisp.png", "assets/wisp.png");
-// Floating gems (drawn at runtime): green narrative gem, red speed gem.
-k.loadSprite("gem-green", makeGemSprite([0, 220, 90]));
-k.loadSprite("gem-red", makeGemSprite([230, 40, 40]));
+// Floating gems (drawn at runtime): 12-frame spinning strips, one 40x40
+// cell per frame. Green narrative gem, red speed gem.
+const GEM_FRAMES = 12;
+k.loadSprite("gem-green", makeGemStrip([0, 220, 90], GEM_FRAMES), { sliceX: GEM_FRAMES, sliceY: 1 });
+k.loadSprite("gem-red", makeGemStrip([230, 40, 40], GEM_FRAMES), { sliceX: GEM_FRAMES, sliceY: 1 });
 k.onLoad(() => {
     const ui = createUI(k);
     window.ui = ui;
