@@ -7,8 +7,8 @@ export function createPlayer(k) {
         k.body(),
         {
             speed: 200,
-            // The sprite is a rounded square; inset the shadow silhouette so
-            // it hugs the opaque pixels instead of the rect's square corners.
+            // Inset the shadow silhouette so it hugs the opaque pixels
+            // instead of the rect's transparent corners/margins.
             shadowInset: 3,
             // Which way the player is facing; sprite swaps to match.
             facing: "down",
@@ -51,7 +51,6 @@ export function createPlayer(k) {
         player.facing = dir;
         player.use(k.sprite(`player-${dir}.png`));
     }
-
     k.onUpdate(() => {
         // Frozen during room transitions (set by the room manager).
         if (player.frozen) return;
