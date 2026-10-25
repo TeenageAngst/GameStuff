@@ -1,7 +1,7 @@
 import { createPlayer } from './src/player.js';
 import { setupInteraction } from './src/interaction.js';
 import { createUI } from './src/ui.js';
-import { createNarrative, createLight, createStat, createLightDirector, createLightSwitch, makeGemStrip } from './src/objects.js';
+import { createNarrative, createLight, createStat, createLightDirector, createLightSwitch } from './src/objects.js';
 import { createBackground } from './src/background.js';
 import { createLighting } from './src/lighting.js';
 import { createRooms, ROOM_IDS } from './src/rooms.js';
@@ -17,36 +17,42 @@ const k = kaplay({
 window.k = k;
 
 // Draws a 32x32 directional player sprite on an offscreen canvas and
-// returns it as a data URL for k.loadSprite. Same rounded-square body as
-// the original player.png, with two eyes toward the facing edge so the
-// player reads as facing up/down/left/right.
+// returns it as a data URL for k.loadSprite. This keeps the original
+// side-on humanoid — head, torso, arms, legs, pixel-for-pixel from
+// player.png — and shows direction the classic way: down = front view
+// (two eyes), up = back of head (no eyes, darker), left/right = head
+// turned toward that side (eyes shifted). The earlier rounded blob with
+// eyes on one edge read as a top-down token; this stays a standing person.
 function makePlayerSprite(facing) {
     const S = 32;
     const cv = document.createElement("canvas");
     cv.width = S;
     cv.height = S;
     const ctx = cv.getContext("2d");
-    // Body
-    ctx.fillStyle = "#e5c49d";
-    ctx.strokeStyle = "#aa8f6f";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    if (ctx.roundRect) {
-        ctx.roundRect(3.5, 3.5, S - 7, S - 7, 7);
-    } else {
-        ctx.rect(3.5, 3.5, S - 7, S - 7);
+    const TAN = "#e5c49d", EDGE = "#aa8f6f", EYE = "#a17d52", BACK = "#bea582";
+    const r = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); };
+    // Head outline: top rows 4-5, sides rows 6-13.
+    r(10, 4, 12, 2, EDGE);
+    r(8, 6, 2, 8, EDGE); r(22, 6, 2, 8, EDGE);
+    r(10, 6, 12, 8, facing === "up" ? BACK : TAN);
+    // Eyes by facing (up: back of head, none).
+    if (facing === "down") {
+        r(12, 10, 2, 2, EYE); r(18, 10, 2, 2, EYE);
+    } else if (facing === "left") {
+        r(10, 10, 2, 2, EYE); r(15, 10, 2, 2, EYE);
+    } else if (facing === "right") {
+        r(15, 10, 2, 2, EYE); r(20, 10, 2, 2, EYE);
     }
-    ctx.fill();
-    ctx.stroke();
-    // Eyes toward the facing edge
-    ctx.fillStyle = "#3c2a1e";
-    const eyes = {
-        down:  [[10, 18, 5, 7], [18, 18, 5, 7]],
-        up:    [[10, 8, 5, 7],  [18, 8, 5, 7]],
-        left:  [[7, 10, 6, 5],  [7, 18, 6, 5]],
-        right: [[20, 10, 6, 5], [20, 18, 6, 5]],
-    }[facing];
-    for (const [x, y, w, h] of eyes) ctx.fillRect(x, y, w, h);
+    // Body (identical for all facings): shoulders, torso, arms, legs.
+    r(2, 14, 6, 2, EDGE); r(24, 14, 6, 2, EDGE); r(8, 14, 16, 2, TAN);
+    r(0, 16, 2, 6, EDGE); r(30, 16, 2, 6, EDGE); r(2, 16, 28, 6, TAN);
+    r(0, 22, 2, 6, EDGE); r(2, 22, 4, 6, TAN); r(6, 22, 2, 6, EDGE);
+    r(8, 22, 16, 6, TAN);
+    r(24, 22, 2, 6, EDGE); r(26, 22, 4, 6, TAN); r(30, 22, 2, 6, EDGE);
+    r(2, 28, 6, 2, EDGE); r(8, 28, 4, 2, TAN); r(12, 28, 8, 2, EDGE);
+    r(20, 28, 4, 2, TAN); r(24, 28, 6, 2, EDGE);
+    r(6, 30, 2, 2, EDGE); r(8, 30, 4, 2, TAN); r(12, 30, 2, 2, EDGE);
+    r(18, 30, 2, 2, EDGE); r(20, 30, 4, 2, TAN); r(24, 30, 2, 2, EDGE);
     return cv.toDataURL("image/png");
 }
 
@@ -58,11 +64,6 @@ for (const dir of ["down", "up", "left", "right"]) {
 }
 k.loadSprite("lamp.png", "assets/lamp.png");
 k.loadSprite("wisp.png", "assets/wisp.png");
-// Floating gems (drawn at runtime): 12-frame spinning strips, one 40x40
-// cell per frame. Green narrative gem, red speed gem.
-const GEM_FRAMES = 12;
-k.loadSprite("gem-green", makeGemStrip([0, 220, 90], GEM_FRAMES), { sliceX: GEM_FRAMES, sliceY: 1 });
-k.loadSprite("gem-red", makeGemStrip([230, 40, 40], GEM_FRAMES), { sliceX: GEM_FRAMES, sliceY: 1 });
 k.onLoad(() => {
     const ui = createUI(k);
     window.ui = ui;
