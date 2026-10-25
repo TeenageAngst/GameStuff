@@ -27,7 +27,6 @@ export function createNarrative(k, id, pos, ui) {
         k.area(),
         k.body({ isStatic: true }),
         "interactable",
-        "shadowCaster",
         id,
         `room:${room}`,
         {
@@ -95,7 +94,6 @@ export function createLightSwitch(k, id, pos, lamp) {
         k.color(225, 220, 205),
         k.area(),
         "interactable",
-        "shadowCaster",
         id,
         `room:${room}`,
         {
@@ -126,7 +124,7 @@ export function createLightSwitch(k, id, pos, lamp) {
 // computed by `computeAnnularSectorShadow` (shadowGeometry.js), which
 // produces the exact angular wedge of the solid part of the ring — so no
 // light leaks between pieces (the old 7-chord approach left ~2° gaps at
-// each joint). The entity carries the "shadowCaster" tag so rooms.js
+// each joint). The entity carries the "interactable" tag so rooms.js
 // auto-registers it as a shadow caster; the `annularSector` property tells
 // the lighting system to use the sector geometry instead of a box.
 //
@@ -210,7 +208,6 @@ export function createLightDirector(k, id, lamp, lighting, player) {
         // Solid: the player cannot walk through the housing.
         k.body({ isStatic: true }),
         "interactable",
-        "shadowCaster",
         id,
         `room:${room}`,
         { interact: () => {} },
@@ -252,13 +249,13 @@ export function createLightDirector(k, id, lamp, lighting, player) {
     place();
 
     const update = k.onUpdate(() => {
-        if (!housing.exists()) {
+        if (housing.destroyed) {
             update.cancel(); // housing is gone; stop tracking it
             return;
         }
         // Pushing: the ring only spins while the player is pushing the handle.
         // Pushing the ring body itself does nothing.
-        if (player && player.exists() && player.isColliding(handle)) {
+        if (player && !player.destroyed && player.isColliding(handle)) {
             const playerAngle = Math.atan2(player.pos.y - cy, player.pos.x - cx);
             let diff = playerAngle - angle;
             while (diff > Math.PI) diff -= 2 * Math.PI;
@@ -304,7 +301,7 @@ export function createEnemy(k, id, player, opts = {}) {
 
     let t = phase;
     const update = k.onUpdate(() => {
-        if (!enemy.exists()) {
+        if (enemy.destroyed) {
             update.cancel();
             return;
         }
@@ -313,7 +310,7 @@ export function createEnemy(k, id, player, opts = {}) {
         enemy.pos.y = y + Math.sin(t * 1.6 + phase) * yAmp;
         // Knockback on touch, with an invulnerability window so one
         // touch doesn't chain-stun the player.
-        if (player && player.exists() && enemy.isColliding(player)) {
+        if (player && !player.destroyed && enemy.isColliding(player)) {
             const now = k.time();
             if (now >= (player.nextVulnAt || 0)) {
                 let dx = player.pos.x - enemy.pos.x;
@@ -350,7 +347,6 @@ export function createStat(k, id, pos, player) {
         k.area(),
         k.body({ isStatic: true }),
         "interactable",
-        "shadowCaster",
         id,
         `room:${room}`,
         {
@@ -361,48 +357,58 @@ export function createStat(k, id, pos, player) {
     ]);
 }
 
-// Draws a 40x40 faceted gem sprite on an offscreen canvas and returns it as
-// a data URL for k.loadSprite. `color` is [r, g, b]; dark/light facets are
-// derived from it. The asymmetric highlight makes rotation visible.
+// Draws a 40x40 side-view cut diamond on an offscreen canvas and returns
+// it as a data URL for k.loadSprite. `color` is [r, g, b]; facet shades
+// are derived from it. Shape: flat table on top, trapezoid crown, wide
+// girdle, pointed pavilion — the classic brilliant-cut side profile (like
+// the 💎 emoji), not a flat rhombus. The asymmetric facet shading makes
+// the flip-spin read as turning.
 export function makeGemSprite([r, g, b]) {
     const S = 40;
     const cv = document.createElement("canvas");
     cv.width = S;
     cv.height = S;
     const ctx = cv.getContext("2d");
-    const dark = `rgb(${r * 0.45 | 0}, ${g * 0.45 | 0}, ${b * 0.45 | 0})`;
-    const base = `rgb(${r}, ${g}, ${b})`;
-    const light = `rgb(${Math.min(255, r + 130) | 0}, ${Math.min(255, g + 130) | 0}, ${Math.min(255, b + 130) | 0})`;
-    const cx = S / 2, cy = S / 2;
-    // Diamond body
+    const shade = (f, add) => `rgb(${Math.min(255, r * f + add) | 0}, ${Math.min(255, g * f + add) | 0}, ${Math.min(255, b * f + add) | 0})`;
+    const dark = shade(0.45, 0);
+    const base = shade(1, 0);
+    const light = shade(1, 80);
+    const lightest = shade(1, 160);
+    // Geometry: table y=6 (x 13..27), girdle y=16 (x 4..36), culet (20,38).
+    const T0 = [13, 6], T1 = [27, 6];
+    const G0 = [4, 16], G1 = [36, 16];
+    const C = [20, 16];
+    const P = [20, 38];
+    function poly(pts, fill) {
+        ctx.beginPath();
+        ctx.moveTo(pts[0][0], pts[0][1]);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+        ctx.closePath();
+        ctx.fillStyle = fill;
+        ctx.fill();
+    }
+    // Crown facets
+    poly([T0, G0, C], light);
+    poly([T0, T1, C], lightest);
+    poly([T1, G1, C], base);
+    // Pavilion facets
+    poly([G0, C, P], base);
+    poly([C, G1, P], dark);
+    // Outline + facet lines
     ctx.beginPath();
-    ctx.moveTo(cx, 2);
-    ctx.lineTo(S - 2, cy);
-    ctx.lineTo(cx, S - 2);
-    ctx.lineTo(2, cy);
-    ctx.closePath();
-    ctx.fillStyle = base;
-    ctx.fill();
+    ctx.moveTo(T0[0], T0[1]); ctx.lineTo(T1[0], T1[1]); ctx.lineTo(G1[0], G1[1]);
+    ctx.lineTo(P[0], P[1]); ctx.lineTo(G0[0], G0[1]); ctx.closePath();
     ctx.strokeStyle = dark;
     ctx.lineWidth = 2;
     ctx.stroke();
-    // Facet lines
     ctx.beginPath();
-    ctx.moveTo(cx, 2); ctx.lineTo(cx, S - 2);
-    ctx.moveTo(2, cy); ctx.lineTo(S - 2, cy);
+    ctx.moveTo(G0[0], G0[1]); ctx.lineTo(G1[0], G1[1]);
+    ctx.moveTo(C[0], C[1]); ctx.lineTo(P[0], P[1]);
+    ctx.moveTo(T0[0], T0[1]); ctx.lineTo(C[0], C[1]);
+    ctx.moveTo(T1[0], T1[1]); ctx.lineTo(C[0], C[1]);
     ctx.strokeStyle = dark;
     ctx.lineWidth = 1;
     ctx.stroke();
-    // Highlight on the upper-right facet (asymmetric so spin reads)
-    ctx.beginPath();
-    ctx.moveTo(cx, 2);
-    ctx.lineTo(S - 2, cy);
-    ctx.lineTo(cx, cy);
-    ctx.closePath();
-    ctx.fillStyle = light;
-    ctx.globalAlpha = 0.55;
-    ctx.fill();
-    ctx.globalAlpha = 1;
     return cv.toDataURL("image/png");
 }
 
@@ -416,6 +422,7 @@ export function createGem(k, id, pos, spriteName, opts = {}) {
         k.sprite(spriteName),
         k.anchor("center"),
         k.pos(pos),
+        k.scale(1),
         k.area(),
         k.body({ isStatic: true }),
         "interactable",
@@ -427,7 +434,12 @@ export function createGem(k, id, pos, spriteName, opts = {}) {
     ]);
     const bobAmp = opts.bobAmp ?? 8;
     const bobSpeed = opts.bobSpeed ?? 1.6;
-    const spinSpeed = opts.spinSpeed ?? 35; // degrees per second
+    // Flip-spin: scale.x oscillates through cos, so the gem turns around
+    // its vertical axis — narrowing to edge-on, then widening mirrored.
+    // The asymmetric facet shading swaps sides as it flips, which reads
+    // as continuous 3D turning. In-plane angle rotation made the old flat
+    // rhombus read as a spinning square; this reads as a turning cut gem.
+    const spinSpeed = opts.spinSpeed ?? 2.0; // rad/s; full turn every ~3.1s
     const phase = opts.phase ?? Math.random() * Math.PI * 2;
     let t = phase;
     const update = k.onUpdate(() => {
@@ -437,7 +449,7 @@ export function createGem(k, id, pos, spriteName, opts = {}) {
         }
         t += k.dt();
         gem.pos.y = baseY + Math.sin(t * bobSpeed) * bobAmp;
-        gem.angle = (gem.angle + spinSpeed * k.dt()) % 360;
+        gem.scale.x = Math.cos(t * spinSpeed);
     });
     return gem;
 }
